@@ -1,0 +1,44 @@
+%!
+% cidfmap generated automatically by mkcidfm.ps from fonts found in
+%   C:/Windows/Fonts
+
+% Substitutions
+/MS-PGothic << /SubfontID 1 /FileType /TrueType /Path (C:/Windows/Fonts/msgothic.ttc) /CSI [(Japan1) 3] >> ;
+/Meiryo-Italic << /SubfontID 1 /FileType /TrueType /Path (C:/Windows/Fonts/meiryo.ttc) /CSI [(Japan1) 3] >> ;
+/NSimSun << /SubfontID 1 /FileType /TrueType /Path (C:/Windows/Fonts/simsun.ttc) /CSI [(GB1) 2] >> ;
+/ArialUnicodeMS-KR << /SubfontID 0 /FileType /TrueType /Path (C:/Windows/Fonts/arialuni.ttf) /CSI [(Korea1) 3] >> ;
+/ArialUnicodeMS-JP << /SubfontID 0 /FileType /TrueType /Path (C:/Windows/Fonts/arialuni.ttf) /CSI [(Japan1) 3] >> ;
+/MalgunGothicBold << /SubfontID 0 /FileType /TrueType /Path (C:/Windows/Fonts/malgunbd.ttf) /CSI [(Korea1) 3] >> ;
+/ArialUnicodeMS-GB << /SubfontID 0 /FileType /TrueType /Path (C:/Windows/Fonts/arialuni.ttf) /CSI [(GB1) 2] >> ;
+/Meiryo << /SubfontID 0 /FileType /TrueType /Path (C:/Windows/Fonts/meiryo.ttc) /CSI [(Japan1) 3] >> ;
+/ArialUnicodeMS-CNS << /SubfontID 0 /FileType /TrueType /Path (C:/Windows/Fonts/arialuni.ttf) /CSI [(CNS1) 2] >> ;
+/MS-UI-Gothic << /SubfontID 2 /FileType /TrueType /Path (C:/Windows/Fonts/msgothic.ttc) /CSI [(Japan1) 3] >> ;
+/MS-Mincho-oldttf << /SubfontID 0 /FileType /TrueType /Path (C:/Windows/Fonts/msmincho.ttf) /CSI [(Japan1) 3] >> ;
+/SimSun << /SubfontID 0 /FileType /TrueType /Path (C:/Windows/Fonts/simsun.ttc) /CSI [(GB1) 2] >> ;
+/MalgunGothicRegular << /SubfontID 0 /FileType /TrueType /Path (C:/Windows/Fonts/malgun.ttf) /CSI [(Korea1) 3] >> ;
+/Meiryo-Bold << /SubfontID 0 /FileType /TrueType /Path (C:/Windows/Fonts/meiryob.ttc) /CSI [(Japan1) 3] >> ;
+/Meiryo-BoldItalic << /SubfontID 1 /FileType /TrueType /Path (C:/Windows/Fonts/meiryob.ttc) /CSI [(Japan1) 3] >> ;
+/MS-Gothic << /SubfontID 0 /FileType /TrueType /Path (C:/Windows/Fonts/msgothic.ttc) /CSI [(Japan1) 3] >> ;
+
+% Aliases
+/HeiseiKakuGo-W5 /MS-Gothic ;
+/Ryumin-Light /ArialUnicodeMS-JP ;
+/MKai-Medium /ArialUnicodeMS-CNS ;
+/AdobeHeitiStd-Regular /ArialUnicodeMS-GB ;
+/GothicBBB-Medium /MS-Gothic ;
+/KozMinPr6N-Regular /ArialUnicodeMS-JP ;
+/MHei-Medium /ArialUnicodeMS-CNS ;
+/STKaiti-Regular /ArialUnicodeMS-GB ;
+/AdobeSongStd-Light /SimSun ;
+/MSung-Light /ArialUnicodeMS-CNS ;
+/HYSMyeongJo-Medium /ArialUnicodeMS-KR ;
+/Ryumin-Medium /ArialUnicodeMS-JP ;
+/AdobeMingStd-Light /ArialUnicodeMS-CNS ;
+/STFangsong-Light /SimSun ;
+/HeiseiMin-W3 /ArialUnicodeMS-JP ;
+/HYGoThic-Medium /ArialUnicodeMS-KR ;
+/STHeiti-Regular /ArialUnicodeMS-GB ;
+/STSong-Light /SimSun ;
+/AdobeMyungjoStd-Medium /ArialUnicodeMS-KR ;
+/MSung-Medium /ArialUnicodeMS-CNS ;
+/HYRGoThic-Medium /ArialUnicodeMS-KR ;
