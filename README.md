@@ -1,2 +1,21 @@
 # LibrePageKST
-Free and open-source PDF editing software for Windows.
+
+![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)
+
+Свободное программное обеспечение с открытым исходным кодом для автоматизации спуска полос, нумерации и подготовки PDF-файлов к печати.
+
+## Основные возможности
+* Автоматический спуск полос (Imposition / Booklet / N-Up).
+* Размножение макетов на листе (Step and Repeat).
+* Нумерация страниц и управление полями/вылетами.
+* Маскирование и работа с фоном страниц.
+
+## Требования
+* Python 3.10+
+* PyQt6
+* PyMuPDF (fitz)
+* deep-translator (для модуля перевода)
+
+## Запуск из исходного кода
+```bash
+python3 main.py

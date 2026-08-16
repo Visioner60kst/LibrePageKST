@@ -1,0 +1,72 @@
+import sys
+from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
+                             QComboBox, QPushButton, QRadioButton, QButtonGroup, 
+                             QGroupBox)
+from PyQt6.QtCore import Qt
+
+class ExportDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Export settings")
+        self.setMinimumWidth(300)
+        
+        layout = QVBoxLayout()
+        
+        # Format selection
+        fmt_layout = QHBoxLayout()
+        fmt_layout.addWidget(QLabel("Format:"))
+        self.format_combo = QComboBox()
+        self.format_combo.addItems(["JPG", "TIFF"])
+        fmt_layout.addWidget(self.format_combo)
+        layout.addLayout(fmt_layout)
+        
+        # Selecting a Page Range
+        self.group_range = QGroupBox("Page range")
+        range_layout = QVBoxLayout()
+        self.rb_all = QRadioButton("All pages")
+        self.rb_all.setChecked(True)
+        self.rb_current = QRadioButton("Current page")
+        self.rb_even = QRadioButton("Even pages")
+        self.rb_odd = QRadioButton("Odd pages")
+        
+        self.range_group = QButtonGroup()
+        self.range_group.addButton(self.rb_all)
+        self.range_group.addButton(self.rb_current)
+        self.range_group.addButton(self.rb_even)
+        self.range_group.addButton(self.rb_odd)
+        
+        range_layout.addWidget(self.rb_all)
+        range_layout.addWidget(self.rb_current)
+        range_layout.addWidget(self.rb_even)
+        range_layout.addWidget(self.rb_odd)
+        self.group_range.setLayout(range_layout)
+        layout.addWidget(self.group_range)
+        
+        # Selecting a Color Space
+        color_layout = QHBoxLayout()
+        color_layout.addWidget(QLabel("Color:"))
+        self.color_combo = QComboBox()
+        self.color_combo.addItems(["RGB", "CMYK", "GRAY"])
+        color_layout.addWidget(self.color_combo)
+        layout.addLayout(color_layout)
+        
+        # Apply button
+        self.btn_apply = QPushButton("APPLY")
+        self.btn_apply.setStyleSheet("background-color: #0078d7; color: white; font-weight: bold;")
+        self.btn_apply.clicked.connect(self.accept)
+        layout.addWidget(self.btn_apply)
+        
+        self.setLayout(layout)
+
+    def get_settings(self):
+        mode = ""
+        if self.rb_all.isChecked(): mode = "All pages"
+        elif self.rb_current.isChecked(): mode = "Current page"
+        elif self.rb_even.isChecked(): mode = "Even pages"
+        elif self.rb_odd.isChecked(): mode = "Odd pages"
+        
+        return {
+            "format": self.format_combo.currentText(),
+            "range": mode,
+            "color": self.color_combo.currentText()
+        }
