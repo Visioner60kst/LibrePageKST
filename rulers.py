@@ -7,11 +7,11 @@ class BaseRuler(QWidget):
     def __init__(self, orientation, parent=None):
         super().__init__(parent)
         self.orientation = orientation
-        self.zoom_factor = 1.0  # Pixels per millimeter
-        self.is_active = False  # Draw flag (for active sheet)
-        self.page_size_mm = 0   # Page size in mm
+        self.zoom_factor = 1.0  # Пикселей на миллиметр
+        self.is_active = False  # Флаг отрисовки (для активного листа)
+        self.page_size_mm = 0   # Размер страницы в мм
         
-        # Set a fixed ruler thickness
+        # Задаем фиксированную толщину линеек
         if self.orientation == Qt.Orientation.Horizontal:
             self.setFixedHeight(20)
         else:
@@ -26,13 +26,13 @@ class BaseRuler(QWidget):
         self.update()
 
     def set_page_size(self, size_mm):
-        """Method to set actual page size in mm"""
+        """Метод для установки реального размера страницы в мм"""
         self.page_size_mm = size_mm
         self.update()
 
     def paintEvent(self, event):
-        # If the page is not active, we don't draw anything, 
-        # but the widget takes its place so that the layout does not jump.
+        # Если страница не активна, мы ничего не рисуем, 
+        # но виджет занимает свое место, чтобы верстка не прыгала.
         if not self.is_active:
             return
 
@@ -42,61 +42,61 @@ class BaseRuler(QWidget):
         if self.zoom_factor <= 0:
             return
 
-        # CALCULATING THE BORDER FOR BACKGROUND AND FRAME
-        # If the page size is specified, draw the background only up to it
+        # ВЫЧИСЛЕНИЕ ГРАНИЦЫ ДЛЯ ПОДЛОЖКИ И РАМКИ
+        # Если задан размер страницы, рисуем подложку только до него
         if self.page_size_mm > 0:
-            # Converting page size to pixels
+            # Преобразуем размер страницы в пиксели
             bg_extent = int(self.page_size_mm * self.zoom_factor)
         else:
             bg_extent = self.width() if self.orientation == Qt.Orientation.Horizontal else self.height()
 
-        # RULER BACKGROUND (We draw only within bg_extent)
+        # ФОН ЛИНЕЙКИ (Рисуем только в пределах bg_extent)
         if self.orientation == Qt.Orientation.Horizontal:
             painter.fillRect(0, 0, bg_extent, self.height(), QColor("#f0f0f0"))
         else:
             painter.fillRect(0, 0, self.width(), bg_extent, QColor("#f0f0f0"))
         
-        # FRAME (We draw only to the edge of the page, and not to the edge of the entire widget)
+        # РАМКА (Рисуем только до края страницы, а не до края всего виджета)
         painter.setPen(QPen(Qt.GlobalColor.darkGray, 1))
         if self.orientation == Qt.Orientation.Horizontal:
             painter.drawLine(0, self.height() - 1, bg_extent, self.height() - 1)
         else:
             painter.drawLine(self.width() - 1, 0, self.width() - 1, bg_extent)
 
-        # Pen and font settings for tick marks
+        # Настройки пера и шрифта для делений
         painter.setPen(QPen(Qt.GlobalColor.black, 1))
         font = QFont("Arial", 6)
         painter.setFont(font)
 
-        # Calculating the limit for drawing marks
+        # Вычисляем предел отрисовки рисок
         if self.page_size_mm > 0:
             limit_mm = int(self.page_size_mm)
         else:
             max_px = self.width() if self.orientation == Qt.Orientation.Horizontal else self.height()
             limit_mm = int(max_px / self.zoom_factor)
 
-        # Drawing risks and numbers
+        # Рисуем риски и цифры
         for mm in range(0, limit_mm + 1):
             pos = int(mm * self.zoom_factor)
             
-            # Check not to draw outside bg_extent
+            # Проверка, чтобы не рисовать за пределами bg_extent
             if pos > bg_extent:
                 break
             
             if self.orientation == Qt.Orientation.Horizontal:
-                if mm % 10 == 0:  # Centimeters
+                if mm % 10 == 0:  # Сантиметры
                     painter.drawLine(pos, 0, pos, self.height())
-                    # The text should not go beyond bg_extent
+                    # Текст не должен вылезать за пределы bg_extent
                     if pos + 2 < bg_extent:
                         painter.drawText(pos + 2, 10, str(mm))
-                elif mm % 5 == 0:  # Half a centimeter (5 mm)
+                elif mm % 5 == 0:  # Половина сантиметра (5 мм)
                     painter.drawLine(pos, self.height() // 2, pos, self.height())
-                else:  # Millimeters
+                else:  # Миллиметры
                     painter.drawLine(pos, self.height() - 5, pos, self.height())
             else:
                 if mm % 10 == 0:
                     painter.drawLine(0, pos, self.width(), pos)
-                    # The text should not go beyond bg_extent
+                    # Текст не должен вылезать за пределы bg_extent
                     if pos + 8 < bg_extent:
                         painter.drawText(2, pos + 8, str(mm))
                 elif mm % 5 == 0:

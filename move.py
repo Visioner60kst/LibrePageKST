@@ -5,7 +5,7 @@ from PyQt6.QtCore import Qt
 class MovePageDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Shift pages")
+        self.setWindowTitle("Сдвиг страниц")
         self.setMinimumWidth(300)
         
         layout = QVBoxLayout(self)
@@ -14,25 +14,25 @@ class MovePageDialog(QDialog):
         
         self.mode_combo = QComboBox()
         self.mode_combo.addItems([
-            "All pages", 
-            "Even pages", 
-            "Odd pages", 
-            "Current page"
+            "Все страницы", 
+            "Четные страницы", 
+            "Нечетные страницы", 
+            "Текущая страница"
         ])
-        form_layout.addRow("Apply to:", self.mode_combo)
+        form_layout.addRow("Применить к:", self.mode_combo)
         
         self.input_h = QLineEdit("0")
         self.input_v = QLineEdit("0")
         
-        form_layout.addRow("Horizontal shift (mm):", self.input_h)
-        form_layout.addRow("Vertical shift (mm):", self.input_v)
+        form_layout.addRow("Сдвиг по горизонтали (мм):", self.input_h)
+        form_layout.addRow("Сдвиг по вертикали (мм):", self.input_v)
         
         layout.addLayout(form_layout)
         
         btn_layout = QHBoxLayout()
-        self.btn_ok = QPushButton("Apply")
+        self.btn_ok = QPushButton("Применить")
         self.btn_ok.clicked.connect(self.accept)
-        self.btn_cancel = QPushButton("Cancel")
+        self.btn_cancel = QPushButton("Отмена")
         self.btn_cancel.clicked.connect(self.reject)
         
         btn_layout.addWidget(self.btn_ok)

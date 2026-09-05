@@ -1,163 +1,156 @@
-# LibrePageKST
+ЕСЛИ ВАМ ПОНРАВИЛАСЬ ДАННАЯ ПРОГРАММА, ВЫ МОЖЕТЕ ПОДДЕРЖАТЬ АВТОРА:
+PayPal: visoner60@gmail.com
+Юмани: 410017700556967
 
-**Version:** 0.1
-**Author:** Denis Tyazhkin
-**© 2026 Denis Tyazhkin**
+Предложения по развитию программы можете направлять на почту: visoner60@gmail.com
+ 
+LibrePageKST
 
-## SUPPORT THE AUTHOR
+Версия: 0.5
+Автор: Тяжкин Денис
+© 2026 Тяжкин Денис
 
-If you like this software, you can support its author:
 
-**PayPal:** [visoner60@gmail.com](mailto:visoner60@gmail.com)
 
----
+О ПРОГРАММЕ
 
-# ABOUT THE SOFTWARE
+LibrePageKST — свободное программное обеспечение для просмотра, редактирования, подготовки и обработки PDF-документов.
 
-LibrePageKST is free and open-source software for viewing, editing, preparing, and processing PDF documents.
+Программа разработана на языке Python с использованием проектов с открытым исходным кодом.
 
-The software is developed in Python and makes use of open-source projects.
 
----
 
-# LICENSE
+ЛИЦЕНЗИЯ
 
-LibrePageKST is distributed under the terms of the **GNU Affero General Public License Version 3 (GNU AGPL v3)**.
+LibrePageKST распространяется на условиях GNU Affero General Public License Version 3 (GNU AGPL v3).
 
-The software is free software and may be used, copied, distributed, and modified in accordance with the terms of the GNU AGPL v3.
+Программа является свободным программным обеспечением и может использоваться, копироваться, распространяться и изменяться в соответствии с условиями GNU AGPL v3.
 
-The full text of the license is available at:
+Полный текст лицензии доступен по адресу:
 
 https://www.gnu.org/licenses/agpl-3.0.html
 
-### Main provisions of the license:
+Основные положения лицензии:
 
-* the software may be used free of charge;
-* the software may be redistributed;
-* the source code may be modified;
-* when distributing modified versions, the requirements of the GNU AGPL v3 must be complied with;
-* applicable copyright and license notices must be preserved.
+• разрешается бесплатно использовать программу;
+• разрешается распространять программу;
+• разрешается изменять исходный код;
+• при распространении изменённых версий необходимо соблюдать условия GNU AGPL v3;
+• необходимо сохранять соответствующие уведомления об авторских правах и лицензии.
 
-The use, modification, and distribution of the software are governed by the terms of the GNU AGPL v3.
+Использование, изменение и распространение программы регулируются условиями GNU AGPL v3.
 
----
 
-# THIRD-PARTY COMPONENTS
 
-LibrePageKST uses the following open-source projects.
+СТОРОННИЕ КОМПОНЕНТЫ
 
-## Python
+LibrePageKST использует следующие проекты с открытым исходным кодом.
 
-**Purpose:**
-Programming language.
+Python
 
-**License:**
+Назначение:
+Язык программирования.
+
+Лицензия:
 Python Software Foundation License.
 
-**Website:**
+Сайт:
 https://www.python.org/
 
-## PyQt6
+PyQt6
 
-**Purpose:**
-Development of the graphical user interface.
+Назначение:
+Создание графического интерфейса пользователя.
 
-**Copyright holder:**
+Правообладатель:
 Riverbank Computing Limited.
 
-**Website:**
+Сайт:
 https://www.riverbankcomputing.com/software/pyqt/
 
-## PyMuPDF
+PyMuPDF
 
-**Purpose:**
-Viewing, processing, and editing PDF documents.
+Назначение:
+Просмотр, обработка и редактирование PDF-документов.
 
-**Copyright holder:**
+Правообладатель:
 Artifex Software, Inc.
 
-**Website:**
+Сайт:
 https://pymupdf.readthedocs.io/
 
-## Pillow
+Pillow
 
-**Purpose:**
-Image processing.
+Назначение:
+Работа с изображениями.
 
-**License:**
+Лицензия:
 PIL Software License.
 
-**Website:**
+Сайт:
 https://python-pillow.org/
 
-## Ghostscript
+Ghostscript
 
-**Purpose:**
-PDF processing, color-space conversion, and print-production operations.
+Назначение:
+Обработка PDF-документов, преобразование цветовых пространств и выполнение операций печатной подготовки.
 
-**Copyright holder:**
+Правообладатель:
 Artifex Software, Inc.
 
-**Website:**
+Сайт:
 https://ghostscript.com/
 
-All third-party components listed above are the property of their respective copyright holders and are distributed under the terms of their respective licenses.
+Все перечисленные сторонние компоненты принадлежат соответствующим правообладателям и распространяются в соответствии с условиями их собственных лицензий.
 
-The use of these components does not alter or supersede the terms of their original licenses.
+Использование этих компонентов не изменяет условия их оригинальных лицензий.
 
----
+АВТОРСКИЕ ПРАВА
 
-# COPYRIGHT
+© 2026 Тяжкин Денис.
 
-© 2026 Denis Tyazhkin.
+LibrePageKST является авторской разработкой.
 
-LibrePageKST is an original software project developed by the author.
+Авторские права на программу принадлежат указанному правообладателю. Программа распространяется на условиях GNU Affero General Public License Version 3 (AGPL v3), предоставляющей пользователям право использовать, изучать, изменять и распространять программу в соответствии с условиями данной лицензии.
 
-Copyright in the software belongs to the copyright holder identified above. The software is distributed under the **GNU Affero General Public License Version 3 (AGPL v3)**, which grants users the right to use, study, modify, and redistribute the software in accordance with the terms of the license.
 
----
 
-# DISCLAIMER OF WARRANTY
+ОТКАЗ ОТ ГАРАНТИЙ
 
-The software is provided **“AS IS”**, without warranty of any kind.
+Программа предоставляется пользователю «КАК ЕСТЬ» («AS IS»).
 
-The author does not guarantee that the software will be free of errors, fully compatible with all devices or software, or suitable for any particular purpose or specific user requirements.
+Автор не гарантирует отсутствие ошибок, полную совместимость программы со всеми устройствами и программным обеспечением либо соответствие программы конкретным требованиям пользователя.
 
-The author shall not be held responsible for:
+Автор не несёт ответственности за:
 
-* loss of data;
-* damage to documents;
-* inability to open files;
-* any errors or failures occurring during the operation of the software;
-* any direct, indirect, incidental, special, or consequential damages arising from the use of LibrePageKST.
+• потерю данных;
+• повреждение документов;
+• невозможность открытия файлов;
+• любые ошибки при работе программы;
+• любые прямые, косвенные, случайные или последующие убытки, возникшие вследствие использования LibrePageKST.
 
-The software is used entirely at the user's own risk.
+Использование программы осуществляется пользователем исключительно на собственный риск.
 
-Users are strongly advised to create backup copies of their documents before performing any operations.
+Перед выполнением операций рекомендуется создавать резервные копии документов.
 
----
+БЛАГОДАРНОСТИ
 
-# ACKNOWLEDGEMENTS
+Автор выражает искреннюю благодарность разработчикам проектов с открытым исходным кодом, использованных при создании LibrePageKST:
 
-The author sincerely thanks the developers and contributors of the open-source projects used in the development of LibrePageKST:
+• Python
+• PyQt6
+• PyMuPDF
+• Pillow
+• Ghostscript
 
-* Python
-* PyQt6
-* PyMuPDF
-* Pillow
-* Ghostscript
+Их вклад сделал возможным создание данного программного обеспечения.
 
-Their work and contributions made the development of this software possible.
+LibrePageKST
 
----
+Свободное программное обеспечение.
 
-# LibrePageKST
-
-**Free and open-source software.**
-
-**License:** GNU Affero General Public License Version 3 (AGPL v3)
+Лицензия: GNU Affero General Public License Version 3 (AGPL v3)
 
 https://www.gnu.org/licenses/agpl-3.0.html
 
-**© 2026 Denis Tyazhkin**
-
+© 2026 Тяжкин Денис

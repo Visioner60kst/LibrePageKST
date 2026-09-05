@@ -5,11 +5,11 @@ from PyQt6.QtWidgets import QFileDialog, QMessageBox
 
 def merge_pdfs_dialog(parent):
     """
-    Selects files, merges them into a temporary file and returns its path.
+    Выбирает файлы, склеивает их во временный файл и возвращает путь к нему.
     """
     files, _ = QFileDialog.getOpenFileNames(
         parent,
-        "Select PDF files for gluing",
+        "Выберите PDF файлы для склейки",
         "",
         "PDF Files (*.pdf)"
     )
@@ -18,19 +18,19 @@ def merge_pdfs_dialog(parent):
         return None
         
     if len(files) < 2:
-        QMessageBox.warning(parent, "Attention", "Select more than one file.")
+        QMessageBox.warning(parent, "Внимание", "Выберите больше одного файла.")
         return None
         
-    # Sorting: English letters -> Russians
+    # Сортировка: английские буквы -> русские
     files = sorted(files)
     
     try:
-        # Create a temporary file
+        # Создаем временный файл
         tmp = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
         tmp_path = tmp.name
         tmp.close()
 
-        # Glue it together
+        # Склеиваем
         merged_doc = fitz.open()
         for f in files:
             with fitz.open(f) as pdf:
@@ -42,5 +42,5 @@ def merge_pdfs_dialog(parent):
         return tmp_path
         
     except Exception as e:
-        QMessageBox.critical(parent, "Error", f"Gluing error:\n{e}")
+        QMessageBox.critical(parent, "Ошибка", f"Ошибка при склеивании:\n{e}")
         return None

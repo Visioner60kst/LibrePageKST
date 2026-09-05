@@ -7,27 +7,27 @@ from PyQt6.QtCore import Qt
 class ExportDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Export settings")
+        self.setWindowTitle("Настройки экспорта")
         self.setMinimumWidth(300)
         
         layout = QVBoxLayout()
         
-        # Format selection
+        # Выбор формата
         fmt_layout = QHBoxLayout()
-        fmt_layout.addWidget(QLabel("Format:"))
+        fmt_layout.addWidget(QLabel("Формат:"))
         self.format_combo = QComboBox()
         self.format_combo.addItems(["JPG", "TIFF"])
         fmt_layout.addWidget(self.format_combo)
         layout.addLayout(fmt_layout)
         
-        # Selecting a Page Range
-        self.group_range = QGroupBox("Page range")
+        # Выбор диапазона страниц
+        self.group_range = QGroupBox("Диапазон страниц")
         range_layout = QVBoxLayout()
-        self.rb_all = QRadioButton("All pages")
+        self.rb_all = QRadioButton("Все страницы")
         self.rb_all.setChecked(True)
-        self.rb_current = QRadioButton("Current page")
-        self.rb_even = QRadioButton("Even pages")
-        self.rb_odd = QRadioButton("Odd pages")
+        self.rb_current = QRadioButton("Текущая страница")
+        self.rb_even = QRadioButton("Четные страницы")
+        self.rb_odd = QRadioButton("Нечетные страницы")
         
         self.range_group = QButtonGroup()
         self.range_group.addButton(self.rb_all)
@@ -42,16 +42,16 @@ class ExportDialog(QDialog):
         self.group_range.setLayout(range_layout)
         layout.addWidget(self.group_range)
         
-        # Selecting a Color Space
+        # Выбор цветового пространства
         color_layout = QHBoxLayout()
-        color_layout.addWidget(QLabel("Color:"))
+        color_layout.addWidget(QLabel("Цвет:"))
         self.color_combo = QComboBox()
         self.color_combo.addItems(["RGB", "CMYK", "GRAY"])
         color_layout.addWidget(self.color_combo)
         layout.addLayout(color_layout)
         
-        # Apply button
-        self.btn_apply = QPushButton("APPLY")
+        # Кнопка Применить
+        self.btn_apply = QPushButton("ПРИМЕНИТЬ")
         self.btn_apply.setStyleSheet("background-color: #0078d7; color: white; font-weight: bold;")
         self.btn_apply.clicked.connect(self.accept)
         layout.addWidget(self.btn_apply)
@@ -60,10 +60,10 @@ class ExportDialog(QDialog):
 
     def get_settings(self):
         mode = ""
-        if self.rb_all.isChecked(): mode = "All pages"
-        elif self.rb_current.isChecked(): mode = "Current page"
-        elif self.rb_even.isChecked(): mode = "Even pages"
-        elif self.rb_odd.isChecked(): mode = "Odd pages"
+        if self.rb_all.isChecked(): mode = "Все страницы"
+        elif self.rb_current.isChecked(): mode = "Текущая страница"
+        elif self.rb_even.isChecked(): mode = "Четные страницы"
+        elif self.rb_odd.isChecked(): mode = "Нечетные страницы"
         
         return {
             "format": self.format_combo.currentText(),

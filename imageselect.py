@@ -7,15 +7,15 @@ class ImageSelectionManager:
         self.selected_image_info = None
 
     def clear_selection(self):
-        """Resets the current selection"""
+        """Сбрасывает текущее выделение"""
         self.selected_page_index = -1
         self.selected_bbox = None
         self.selected_image_info = None
 
     def select_image_at(self, page, page_index, pdf_x, pdf_y):
         """
-        Checks if there is an image at the given coordinates.
-        If there is, saves its parameters and returns True.
+        Проверяет, есть ли изображение по заданным координатам.
+        Если есть, сохраняет его параметры и возвращает True.
         """
         click_point = fitz.Point(pdf_x, pdf_y)
         images = page.get_image_info()
@@ -23,7 +23,7 @@ class ImageSelectionManager:
         found_image = None
         found_bbox = None
 
-        # Go from the end of the list to select the top image
+        # Идем с конца списка, чтобы выбрать самое верхнее изображение
         for img in reversed(images):
             bbox = img.get("bbox")
             if bbox:

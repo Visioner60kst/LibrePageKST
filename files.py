@@ -15,12 +15,12 @@ class FileItem(QWidget):
         main_layout.setContentsMargins(2, 2, 2, 2)
         main_layout.setSpacing(2)
         
-        # Container for the icon and close button
+        # Контейнер для иконки и кнопки закрытия
         img_container = QWidget()
         img_layout = QGridLayout(img_container)
         img_layout.setContentsMargins(0, 0, 0, 0)
         
-        # We get a preview 1-th page
+        # Получаем превью 1-й страницы
         page = doc.load_page(0)
         pix = page.get_pixmap(matrix=fitz.Matrix(0.2, 0.2))
         img = QImage(pix.samples, pix.width, pix.height, pix.stride, QImage.Format.Format_RGB888)
@@ -31,7 +31,7 @@ class FileItem(QWidget):
         self.lbl_img.setStyleSheet("border: 1px solid #555; background: #111;")
         self.lbl_img.setCursor(Qt.CursorShape.PointingHandCursor)
         
-        # Close button (cross)
+        # Кнопка закрытия (крестик)
         self.btn_close = QPushButton("✕")
         self.btn_close.setFixedSize(20, 20)
         self.btn_close.setStyleSheet("background-color: #cc0000; color: white; font-weight: bold; border-radius: 10px; border: none;")
@@ -40,7 +40,7 @@ class FileItem(QWidget):
         img_layout.addWidget(self.lbl_img, 0, 0)
         img_layout.addWidget(self.btn_close, 0, 0, Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignRight)
         
-        # File name
+        # Название файла
         filename = os.path.basename(file_path)
         lbl_name = QLabel(filename)
         lbl_name.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -73,13 +73,13 @@ class FilesPanel(QWidget):
         self.grid.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter)
         self.scroll.setWidget(self.container)
         
-        lbl_title = QLabel("Open files")
+        lbl_title = QLabel("Открытые файлы")
         lbl_title.setStyleSheet("color: #aaa; font-weight: bold; padding: 5px; background: #222;")
         layout.addWidget(lbl_title)
         layout.addWidget(self.scroll)
 
     def refresh(self, open_files_dict):
-        # Cleaning
+        # Очистка
         while self.grid.count():
             item = self.grid.takeAt(0)
             if item.widget(): item.widget().deleteLater()

@@ -5,10 +5,10 @@ import platform
 import fitz  # PyMuPDF
 from PyQt6.QtWidgets import (QApplication, QDialog, QVBoxLayout, QHBoxLayout, 
                              QLabel, QComboBox, QCheckBox, QSpinBox, QPushButton, 
-                             QGroupBox, QFormLayout, QRadioButton, QLineEdit, QScrollArea, QWidget, QInputDialog)
+                             QGroupBox, QFormLayout, QRadioButton, QLineEdit, QScrollArea, QWidget)
 from PyQt6.QtPrintSupport import QPrinter, QPrintDialog, QPrinterInfo, QPageSetupDialog
 from PyQt6.QtGui import QImage, QPixmap, QPainter, QTransform
-from PyQt6.QtCore import Qt, QRect
+from PyQt6.QtCore import Qt, QRect, QRectF
 
 class PrintWizard(QDialog):
     def __init__(self, file_path, current_page=1):
@@ -19,10 +19,9 @@ class PrintWizard(QDialog):
         
         self._is_first_show = True
         self.current_preview_index = 0 
-        self.lpi_percent = 100  # Meaning LPI by default
         
-        self.setWindowTitle(f"Print Wizard: {file_path.split('/')[-1] if file_path else 'No file'}")
-        self.resize(700, 500)
+        self.setWindowTitle(f"Мастер печати: {file_path.split('/')[-1] if file_path else 'Нет файла'}")
+        self.resize(700, 520)
         self.init_ui()
 
     def showEvent(self, event):
@@ -40,7 +39,7 @@ class PrintWizard(QDialog):
             self._is_first_show = False
 
     def resizeEvent(self, event):
-        """Handles window resizing, redrawing the preview to fit the new dimensions"""
+        """Обрабатывает изменение размера окна, перерисовывая превью под новые габариты"""
         super().resizeEvent(event)
         if not self._is_first_show:
             self.update_preview()
@@ -50,15 +49,15 @@ class PrintWizard(QDialog):
         main_layout.setContentsMargins(15, 15, 15, 15)
         main_layout.setSpacing(15)
 
-        # LEFT: Settings (fixed small width)
+        # ЛЕВАЯ ЧАСТЬ: Настройки (фиксированная небольшая ширина)
         controls_container = QWidget()
         controls_container.setMaximumWidth(320)
         controls_layout = QVBoxLayout(controls_container)
         controls_layout.setContentsMargins(0, 0, 0, 0)
         controls_layout.setSpacing(10)
 
-        # 1. Printer
-        group_printer = QGroupBox("Printing device")
+        # 1. Принтер
+        group_printer = QGroupBox("Устройство печати")
         printer_layout = QVBoxLayout()
         printer_layout.setSpacing(5)
         
@@ -77,7 +76,7 @@ class PrintWizard(QDialog):
             
         self.combo_printers.currentIndexChanged.connect(self.on_printer_changed)
         
-        self.btn_settings = QPushButton("Printer settings...")
+        self.btn_settings = QPushButton("Настройки принтера...")
         self.btn_settings.clicked.connect(self.open_printer_settings)
         
         printer_layout.addWidget(self.combo_printers)
@@ -85,17 +84,17 @@ class PrintWizard(QDialog):
         group_printer.setLayout(printer_layout)
         controls_layout.addWidget(group_printer)
 
-        # 2. Selecting pages
-        group_range = QGroupBox("Range")
+        # 2. Выбор страниц
+        group_range = QGroupBox("Диапазон")
         range_layout = QVBoxLayout()
         range_layout.setSpacing(5)
         
-        self.radio_all = QRadioButton("All pages")
+        self.radio_all = QRadioButton("Все страницы")
         self.radio_all.setChecked(True)
-        self.radio_curr = QRadioButton(f"Current ({self.current_page})")
+        self.radio_curr = QRadioButton(f"Текущая ({self.current_page})")
         
         custom_range_layout = QHBoxLayout()
-        self.radio_custom = QRadioButton("Their:")
+        self.radio_custom = QRadioButton("Свои:")
         self.input_custom = QLineEdit()
         self.input_custom.setPlaceholderText("1-5, 8")
         custom_range_layout.addWidget(self.radio_custom)
@@ -107,67 +106,76 @@ class PrintWizard(QDialog):
         group_range.setLayout(range_layout)
         controls_layout.addWidget(group_range)
 
-        # 3. Filter and order
-        group_filter = QGroupBox("Filter")
+        # 3. Фильтр и порядок
+        group_filter = QGroupBox("Фильтр")
         filter_layout = QVBoxLayout()
         filter_layout.setSpacing(5)
-        self.check_odd = QCheckBox("Odd")
-        self.check_even = QCheckBox("Even")
-        self.check_reverse = QCheckBox("From the end of the document")
+        self.check_odd = QCheckBox("Нечетные")
+        self.check_even = QCheckBox("Четные")
+        self.check_reverse = QCheckBox("С конца документа")
         filter_layout.addWidget(self.check_odd)
         filter_layout.addWidget(self.check_even)
         filter_layout.addWidget(self.check_reverse)
         group_filter.setLayout(filter_layout)
         controls_layout.addWidget(group_filter)
 
-        # 4. Scale and transformation
-        group_transform = QGroupBox("Display")
+        # 4. Масштаб и трансформация
+        group_transform = QGroupBox("Отображение")
         transform_layout = QVBoxLayout()
         transform_layout.setSpacing(5)
         
         form_layout = QFormLayout()
         form_layout.setContentsMargins(0, 0, 0, 0)
         self.combo_scale = QComboBox()
-        self.combo_scale.addItems(["Fit to Page", "Original Size", "Scale %"])
-        form_layout.addRow("Scale:", self.combo_scale)
+        self.combo_scale.addItems(["По размеру страницы", "Исходный размер", "Масштаб %"])
+        self.combo_scale.setCurrentText("Исходный размер")  # По умолчанию - Исходный размер
+        form_layout.addRow("Масштаб:", self.combo_scale)
         self.spin_scale = QSpinBox()
         self.spin_scale.setRange(10, 500)
         self.spin_scale.setValue(100)
-        form_layout.addRow("Percent:", self.spin_scale)
+        form_layout.addRow("Процент:", self.spin_scale)
         transform_layout.addLayout(form_layout)
 
         checks_layout = QHBoxLayout()
-        self.check_flip_v = QCheckBox("Neg. Vert.")
-        self.check_flip_h = QCheckBox("Neg. Gore.")
+        self.check_flip_v = QCheckBox("Отр. Верт.")
+        self.check_flip_h = QCheckBox("Отр. Гор.")
         checks_layout.addWidget(self.check_flip_v)
         checks_layout.addWidget(self.check_flip_h)
         
-        self.check_rotate = QCheckBox("Auto rotate")
+        self.check_rotate = QCheckBox("Автоповорот")
+        self.check_rotate.setChecked(True)  # По умолчанию включен автоповорот
         transform_layout.addLayout(checks_layout)
         transform_layout.addWidget(self.check_rotate)
         group_transform.setLayout(transform_layout)
         controls_layout.addWidget(group_transform)
 
-        # 5. Print quality (LPI)
-        group_quality = QGroupBox("Print quality")
+        # 5. Качество и режим печати
+        group_quality = QGroupBox("Качество печати")
         quality_layout = QVBoxLayout()
         quality_layout.setSpacing(5)
         
-        self.btn_lpi = QPushButton(f"Change point LPI ({self.lpi_percent}%)")
-        self.btn_lpi.clicked.connect(self.change_lpi)
-        quality_layout.addWidget(self.btn_lpi)
+        self.check_high_dpi = QCheckBox("Высокая четкость (600 DPI MuPDF)")
+        self.check_high_dpi.setChecked(True)
+        self.check_high_dpi.setToolTip("Векторный рендеринг движком MuPDF в родное разрешение принтера 600/1200 DPI")
+        
+        self.check_mono = QCheckBox("1-бит Монохром (Бритвенные края)")
+        self.check_mono.setChecked(True)
+        self.check_mono.setToolTip("Исключает серые пиксели и растровую сетку (halftoning). 100% чистый черный тонер.")
+
+        quality_layout.addWidget(self.check_high_dpi)
+        quality_layout.addWidget(self.check_mono)
         
         group_quality.setLayout(quality_layout)
         controls_layout.addWidget(group_quality)
 
         controls_layout.addStretch()
 
-        # Buttons
+        # Кнопки
         btn_layout = QHBoxLayout()
-        btn_print = QPushButton("Seal")
+        btn_print = QPushButton("Печать")
         btn_print.setStyleSheet("background-color: #28a745; color: white; font-weight: bold; padding: 6px;")
         btn_print.clicked.connect(self.print_document)
-        btn_cancel = QPushButton("Cancel")
+        btn_cancel = QPushButton("Отмена")
         btn_cancel.setStyleSheet("padding: 6px;")
         btn_cancel.clicked.connect(self.close)
         btn_layout.addWidget(btn_cancel)
@@ -176,26 +184,25 @@ class PrintWizard(QDialog):
 
         main_layout.addWidget(controls_container)
 
-        # RIGHT SIDE: Compact preview + Navigation
-        preview_group = QGroupBox("Preview")
+        # ПРАВАЯ ЧАСТЬ: Компактное превью + Навигация
+        preview_group = QGroupBox("Предварительный просмотр")
         preview_layout = QVBoxLayout()
         
-        self.preview_label = QLabel("Preview")
+        self.preview_label = QLabel("Превью")
         self.preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.preview_scroll = QScrollArea()
         self.preview_scroll.setWidgetResizable(True)
         self.preview_scroll.setWidget(self.preview_label)
         self.preview_scroll.setStyleSheet("background-color: #e0e0e0; border: none;")
-        # Disable scroll bars, since the image will always fit entirely
         self.preview_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.preview_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         
         preview_layout.addWidget(self.preview_scroll)
         
         nav_layout = QHBoxLayout()
-        self.btn_prev = QPushButton("< Before")
-        self.btn_next = QPushButton("After >")
-        self.lbl_page_counter = QLabel("p: 0 / 0")
+        self.btn_prev = QPushButton("< Пред")
+        self.btn_next = QPushButton("След >")
+        self.lbl_page_counter = QLabel("Стр: 0 / 0")
         self.lbl_page_counter.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
         self.btn_prev.clicked.connect(self.prev_page)
@@ -209,11 +216,12 @@ class PrintWizard(QDialog):
         preview_group.setLayout(preview_layout)
         main_layout.addWidget(preview_group)
 
-        # Connecting signals
+        # Подключение сигналов
         widgets = [self.check_odd, self.check_even, self.check_reverse, 
                    self.check_flip_v, self.check_flip_h, self.check_rotate,
                    self.spin_scale, self.radio_all, self.radio_curr, 
-                   self.radio_custom, self.combo_scale]
+                   self.radio_custom, self.combo_scale, self.check_high_dpi, 
+                   self.check_mono]
         
         for w in widgets:
             if isinstance(w, QCheckBox) or isinstance(w, QRadioButton):
@@ -225,60 +233,36 @@ class PrintWizard(QDialog):
         
         self.input_custom.textChanged.connect(self.on_settings_changed)
 
-    def change_lpi(self):
-        """Opens a dialog for changing LPI"""
-        value, ok = QInputDialog.getInt(
-            self, 
-            "Change point LPI", 
-            "Enter percentage of points LPI (1-100):\nA lower value will make the photo grainier (for the risograph).", 
-            self.lpi_percent, 1, 100, 1
+    def binarize_mono(self, img):
+        """
+        1-битная пороговая бинаризация (Threshold).
+        Все полутона превращаются либо в 100% черный, либо в 100% белый.
+        Исключает растровую сетку (halftone/dithering) драйвера принтера Canon.
+        """
+        gray = img.convertToFormat(QImage.Format.Format_Grayscale8)
+        mono = gray.convertToFormat(
+            QImage.Format.Format_Mono, 
+            Qt.ImageConversionFlag.ThresholdDither | Qt.ImageConversionFlag.ColorOnly
         )
-        if ok:
-            self.lpi_percent = value
-            self.btn_lpi.setText(f"Change point LPI ({self.lpi_percent}%)")
-            self.on_settings_changed()
-
-    def apply_lpi_effect(self, img):
-        """Applies line reduction effect (LPI/grain size) To QImage"""
-        if self.lpi_percent >= 100:
-            return img
-            
-        factor = self.lpi_percent / 100.0
-        new_w = max(1, int(img.width() * factor))
-        new_h = max(1, int(img.height() * factor))
-        
-        orig_w = img.width()
-        orig_h = img.height()
-        
-        # Compress the image to “lose” extra points
-        small_img = img.scaled(new_w, new_h, Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.SmoothTransformation)
-        
-        # Stretch back WITHOUT smoothing to visualize large "dots"" (pixels/raster)
-        grainy_img = small_img.scaled(orig_w, orig_h, Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.FastTransformation)
-        
-        return grainy_img
+        return mono.convertToFormat(QImage.Format.Format_RGB32)
 
     def on_printer_changed(self, index):
-        """Changing the active printer from the drop-down list"""
+        """Смена активного принтера из выпадающего списка"""
         printer_info = self.combo_printers.itemData(index)
         if printer_info:
             self.printer.setPrinterName(printer_info.printerName())
 
     def open_printer_settings(self):
-        """Opens the native printer driver settings window"""
+        """Открывает родное окно настроек драйвера принтера"""
         printer_name = self.printer.printerName()
         
         if platform.system() == "Windows":
             try:
-                # System call Windows, which opens the driver window (Printing Preferences)
                 subprocess.run(["rundll32", "printui.dll,PrintUIEntry", "/e", "/n", printer_name])
-                
-                # We update the preview because the user could change the paper size in the driver window
                 self.on_settings_changed()
             except Exception as e:
-                print(f"Could not open driver settings Windows: {e}")
+                print(f"Не удалось открыть настройки драйвера Windows: {e}")
         else:
-            # Fallback for macOS And Linux
             dialog = QPageSetupDialog(self.printer, self)
             if dialog.exec():
                 self.combo_printers.setCurrentText(self.printer.printerName())
@@ -293,7 +277,7 @@ class PrintWizard(QDialog):
         total = len(self.doc)
         indices = set()
 
-        # 1. Range
+        # 1. Диапазон
         if self.radio_all.isChecked():
             indices = set(range(total))
         elif self.radio_curr.isChecked():
@@ -319,13 +303,13 @@ class PrintWizard(QDialog):
         
         indices_list = sorted(list(indices))
 
-        # 2. Even/Odd
+        # 2. Четные/Нечетные
         if self.check_odd.isChecked():
             indices_list = [i for i in indices_list if (i + 1) % 2 != 0]
         if self.check_even.isChecked():
             indices_list = [i for i in indices_list if (i + 1) % 2 == 0]
             
-        # 3. Reverse
+        # 3. Реверс
         if self.check_reverse.isChecked():
             indices_list.reverse()
             
@@ -348,44 +332,37 @@ class PrintWizard(QDialog):
         valid_indices = self.get_valid_pages()
         
         if not valid_indices:
-            self.preview_label.setText("No pages to display")
-            self.lbl_page_counter.setText("p: 0 / 0")
+            self.preview_label.setText("Нет страниц для отображения")
+            self.lbl_page_counter.setText("Стр: 0 / 0")
             return
 
         if self.current_preview_index >= len(valid_indices):
             self.current_preview_index = len(valid_indices) - 1
         
         idx = valid_indices[self.current_preview_index]
-        self.lbl_page_counter.setText(f"p: {self.current_preview_index + 1} / {len(valid_indices)}")
+        self.lbl_page_counter.setText(f"Стр: {self.current_preview_index + 1} / {len(valid_indices)}")
         
         page = self.doc.load_page(idx)
         
-        # We always render previews in good quality (scale x2)
-        # Regardless of what percentage is specified in the print settings
         mat = fitz.Matrix(2.0, 2.0)
         pix = page.get_pixmap(matrix=mat)
         
         fmt = QImage.Format.Format_RGBA8888 if pix.alpha else QImage.Format.Format_RGB888
         img = QImage(pix.samples, pix.width, pix.height, pix.stride, fmt).copy()
         
-        # We apply LPI preview effect
-        img = self.apply_lpi_effect(img)
-        
+        if self.check_mono.isChecked():
+            img = self.binarize_mono(img)
+
         img = img.mirrored(self.check_flip_h.isChecked(), self.check_flip_v.isChecked())
         
         if self.check_rotate.isChecked() and img.width() > img.height():
             img = img.transformed(QTransform().rotate(90), Qt.TransformationMode.SmoothTransformation)
             
-        # Scale the image to fit the available visible area
         viewport_size = self.preview_scroll.viewport().size()
-        
-        # Leave a gap in 4 pixel to avoid edge artifacts
         target_w = max(1, viewport_size.width() - 4)
         target_h = max(1, viewport_size.height() - 4)
         
         pixmap = QPixmap.fromImage(img)
-        
-        # KeepAspectRatio automatically fits a portrait page in height and a landscape page in width
         scaled_pixmap = pixmap.scaled(
             target_w, target_h, 
             Qt.AspectRatioMode.KeepAspectRatio, 
@@ -395,21 +372,21 @@ class PrintWizard(QDialog):
         self.preview_label.setPixmap(scaled_pixmap)
 
     def print_document(self):
-        """Sending a document to a real printer"""
+        """Отправка документа на печать"""
         valid_indices = self.get_valid_pages()
         if not valid_indices or not self.doc:
             return
 
         if not self.printer.isValid():
-            print("Invalid printer selected.")
+            print("Выбран недопустимый принтер.")
             return
 
-        doc_name = self.file_path.split('/')[-1] if self.file_path else "Document PyMuPDF"
+        doc_name = self.file_path.split('/')[-1] if self.file_path else "Документ PyMuPDF"
         self.printer.setDocName(doc_name)
 
         painter = QPainter()
         if not painter.begin(self.printer):
-            print("The printing process failed to start. Check the printer connection.")
+            print("Не удалось запустить процесс печати. Проверьте подключение принтера.")
             return
 
         for i, page_idx in enumerate(valid_indices):
@@ -418,26 +395,32 @@ class PrintWizard(QDialog):
 
             page = self.doc.load_page(page_idx)
             
-            dpi = self.printer.logicalDpiX()
-            zoom = dpi / 72.0 
-            mat = fitz.Matrix(zoom, zoom)
-            pix = page.get_pixmap(matrix=mat)
+            # Получаем реальное аппаратное разрешение принтера (например 600 DPI)
+            target_dpi = self.printer.logicalDpiX() if self.check_high_dpi.isChecked() else 300
+            if target_dpi < 300:
+                target_dpi = 600
 
-            fmt = QImage.Format.Format_RGBA8888 if pix.alpha else QImage.Format.Format_RGB888
+            # Векторный рендеринг страницы движком MuPDF прямо в целевое DPI принтера
+            zoom = target_dpi / 72.0 
+            mat = fitz.Matrix(zoom, zoom)
+            pix = page.get_pixmap(matrix=mat, alpha=False)
+
+            fmt = QImage.Format.Format_RGB888
             img = QImage(pix.samples, pix.width, pix.height, pix.stride, fmt).copy()
             
-            img = img.convertToFormat(QImage.Format.Format_RGB32)
-            
-            # We apply LPI effect for printing on paper
-            img = self.apply_lpi_effect(img)
+            # Если включен монохром, производим пороговую бинаризацию
+            if self.check_mono.isChecked():
+                img = self.binarize_mono(img)
+            else:
+                if img.format() != QImage.Format.Format_RGB32:
+                    img = img.convertToFormat(QImage.Format.Format_RGB32)
 
             img = img.mirrored(self.check_flip_h.isChecked(), self.check_flip_v.isChecked())
 
             page_rect = self.printer.pageRect(QPrinter.Unit.DevicePixel)
-            
             pr_w = int(page_rect.width())
             pr_h = int(page_rect.height())
-            
+
             if self.check_rotate.isChecked():
                 img_is_landscape = img.width() > img.height()
                 page_is_landscape = pr_w > pr_h
@@ -446,9 +429,9 @@ class PrintWizard(QDialog):
 
             scale_mode = self.combo_scale.currentText()
 
-            if scale_mode == "Fit to page":
+            if scale_mode == "По размеру страницы":
                 img = img.scaled(pr_w, pr_h, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
-            elif scale_mode == "Scale %":
+            elif scale_mode == "Масштаб %":
                 pct = self.spin_scale.value() / 100.0
                 img = img.scaled(int(img.width() * pct), int(img.height() * pct), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
 
@@ -460,19 +443,16 @@ class PrintWizard(QDialog):
         painter.end()
         self.accept()
 
-# --- ADDED FUNCTION TO CALL FROM MAIN.PY ---
+# --- ФУНКЦИЯ ДЛЯ ВЫЗОВА ИЗ MAIN.PY ---
 def start_print(file_path, page=1):
     """
-    Creates and opens a modal print window (PrintWizard).
-    Used when importing a module inside the main application (QApplication already launched).
+    Создает и открывает модальное окно печати (PrintWizard).
+    Используется при импорте модуля внутрь основного приложения (QApplication уже запущен).
     """
-    # Since main.py has already launched the application, we just need to create a dialogue
     dialog = PrintWizard(file_path, page)
-    # We use .exec(), to make the window modal (the user could not press other buttons 
-    # in the main window until the print closes)
     dialog.exec()
 
-# --- THE POSSIBILITY OF RUNNING AS A SEPARATE FILE IS SAVED ---
+# --- ВОЗМОЖНОСТЬ ЗАПУСКА КАК ОТДЕЛЬНОГО ФАЙЛА ---
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     file_path = sys.argv[1] if len(sys.argv) > 1 else ""

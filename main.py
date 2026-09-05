@@ -6,7 +6,7 @@ import traceback
 import tempfile
 import platform
 import shutil
-from PIL import Image, ImageEnhance # Needed for correction
+from PIL import Image, ImageEnhance # Необходима для коррекции
 import io
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QHBoxLayout, QLabel, QPushButton, QScrollArea, 
@@ -16,15 +16,18 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
 from PyQt6.QtCore import Qt, QRect, QPoint, QEvent, QMimeData, QTimer
 from PyQt6.QtGui import QImage, QPixmap, QIntValidator, QDrag, QPainter, QPen, QColor
 
-# Importing rulers from our new module
+# Импортируем линейки из нашего нового модуля
 from rulers import HorizontalRuler, VerticalRuler
 
-# Importing new modules
+# Импортируем новые модули
+from PyQt6.QtCore import Qt, QRect, QPoint, QEvent, QMimeData, QTimer, QSize
+from PyQt6.QtGui import QImage, QPixmap, QIntValidator, QDrag, QPainter, QPen, QColor, QIcon
 from pagemouse import ThumbnailHandler
+from pagezoom import PageZoom
 from imagetopdf import ImageToPdfDialog
 from files import FilesPanel
 from booklet import BookletDialog
-from booklet2 import Booklet2Dialog  # NEW MODULE: Booklet in 2 fold
+from booklet2 import Booklet2Dialog  # НОВЫЙ МОДУЛЬ: Буклет в 2 сгиба
 from numberlitlepage import add_number_to_pixmap
 from cancel import HistoryManager
 from cutpage import CutPageDialog
@@ -46,36 +49,45 @@ from convertcolor import ConvertColorDialog
 from curves import CurvesDialog
 from imageclone import ImageCloneDialog
 from imageselect import ImageSelectionManager
-from photocorrection import PhotoCorrectionDialog # NEW MODULE
-from openeditphoto import ExternalEditorDialog # NEW MODULE
-from fields import FieldsDialog # NEW MODULE: Fields+
+from photocorrection import PhotoCorrectionDialog # НОВЫЙ МОДУЛЬ
+from openeditphoto import ExternalEditorDialog # НОВЫЙ МОДУЛЬ
+from fields import FieldsDialog # НОВЫЙ МОДУЛЬ: Поля+
+from logopage import LogoPageDialog
+from pdftransfer import PDFTransferDialog
 
-# IMPORTING PRINT MODULE (replace PrintDialog/start_print class for that name/function that is used in print.py)
+def resource_path(relative_path):
+    if getattr(sys, 'frozen', False):
+        base_path = os.path.dirname(sys.executable)
+    else:
+        base_path = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base_path, relative_path)
+
+# ИМПОРТ МОДУЛЯ ПЕЧАТИ (замените PrintDialog/start_print на то имя класс/функции, которое используется в print.py)
 import print as print_module
 
 
-# Custom widget for displaying a page with the ability to select and click
+# Кастомный виджет для отображения страницы с возможностью выделения и клика
 class PageWidget(QWidget):
 
     def __init__(self, pixmap, page_index, callback, pixels_per_mm=1.0, show_rulers=True, page_w_mm=0, page_h_mm=0, zoom_factor=1.0, selection_manager=None):
         super().__init__()
         self.page_index = page_index
         self.callback = callback
-        self.is_selected = False  # For scrolling
+        self.is_selected = False  # Для скролла
         self.is_active = False
-        self.show_rulers = show_rulers # Flag to control display of rulers
+        self.show_rulers = show_rulers # Флаг для контроля отображения линеек
         self.zoom_factor = zoom_factor
         self.selection_manager = selection_manager
         
-        # Drawing a blue frame for the selected photo if it is on this page
+        # Отрисовка синей рамки выделенного фото, если оно на этой странице
         if self.selection_manager and self.selection_manager.selected_page_index == self.page_index and self.selection_manager.selected_bbox:
             painter = QPainter(pixmap)
-            pen = QPen(QColor(0, 0, 255)) # Blue frame
+            pen = QPen(QColor(0, 0, 255)) # Синяя рамка
             pen.setWidth(3)
             painter.setPen(pen)
             
             bbox = self.selection_manager.selected_bbox
-            # Converting coordinates from PDF points in pixels QPixmap
+            # Переводим координаты из PDF points в пиксели QPixmap
             x = bbox.x0 * self.zoom_factor
             y = bbox.y0 * self.zoom_factor
             w = (bbox.x1 - bbox.x0) * self.zoom_factor
@@ -84,47 +96,90 @@ class PageWidget(QWidget):
             painter.drawRect(int(x), int(y), int(w), int(h))
             painter.end()
 
-        # Setting up a grid for placing rulers and page images
+        # Настраиваем сетку для размещения линеек и изображения страницы
         self.layout = QGridLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
         self.layout.setSpacing(0)
         
-        # Initializing the rulers
+        # Инициализируем линейки
         self.h_ruler = HorizontalRuler()
         self.v_ruler = VerticalRuler()
         self.h_ruler.set_zoom(pixels_per_mm)
         self.v_ruler.set_zoom(pixels_per_mm)
 
-        # FIX: Passing the physical page size to the rulers
+        # FIX: Передаем физический размер страницы в линейки
         if hasattr(self.h_ruler, 'set_page_size'):
             self.h_ruler.set_page_size(page_w_mm)
         if hasattr(self.v_ruler, 'set_page_size'):
             self.v_ruler.set_page_size(page_h_mm)
         
-        # Image of the leaf itself
+        # Изображение самого листа
         self.image_label = QLabel()
         self.image_label.setPixmap(pixmap)
-        self.image_label.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+        self.image_label.setFixedSize(pixmap.size())
+        self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
-        # Placing elements: (0, 0) remains empty (corner)
-        # (0, 1) - horizon ruler, (1, 0) - vertical ruler, (1, 1) - the sheet itself
+        # ==========================================
+        # СЛОЙ ПРЕДПРОСМОТРА КАДРИРОВАНИЯ
+        # ==========================================
+
+        self.crop_overlay = CropPreviewOverlay(self.image_label)
+        self.crop_overlay.set_page_size(
+            page_w_mm,
+            page_h_mm
+        )
+
+        self.crop_overlay.setGeometry(
+            0,
+            0,
+            self.image_label.width(),
+            self.image_label.height()
+        )
+
+        self.crop_overlay.hide()
+        
+        # Размещаем элементы: (0, 0) остается пустым (угол)
+        # (0, 1) - гориз. линейка, (1, 0) - вертик. линейка, (1, 1) - сам лист
         self.layout.addWidget(self.h_ruler, 0, 1)
         self.layout.addWidget(self.v_ruler, 1, 0)
         self.layout.addWidget(self.image_label, 1, 1)
         
         self.update_style()
 
+                # Размер PageWidget строго соответствует реальному размеру страницы
+        self.setSizePolicy(
+            QSizePolicy.Policy.Fixed,
+            QSizePolicy.Policy.Fixed
+        )
+
+        self.image_label.setSizePolicy(
+            QSizePolicy.Policy.Fixed,
+            QSizePolicy.Policy.Fixed
+        )
+
     def update_style(self):
-        # If active (selected for printing) - bold blue frame
-        # If simply selected by scroll - a regular blue frame
+        # Рамка должна находиться только вокруг реального листа,
+        # а не растягивать весь PageWidget до размера самой большой страницы.
+
         if self.is_active:
-            self.image_label.setStyleSheet("border: 4px solid #0000FF;")
+            self.image_label.setStyleSheet(
+                "QLabel {"
+                "border: 4px solid #0000FF;"
+                "}"
+            )
         elif self.is_selected:
-            self.image_label.setStyleSheet("border: 2px solid blue;")
+            self.image_label.setStyleSheet(
+                "QLabel {"
+                "border: 2px solid blue;"
+                "}"
+            )
         else:
-            self.image_label.setStyleSheet("border: 2px solid transparent;")
-            
-        # Activate/deactivable ambulances (are drawn only on the active sheet And if allowed by the mode)
+            self.image_label.setStyleSheet(
+                "QLabel {"
+                "border: 2px solid transparent;"
+                "}"
+            )
+
         rulers_active = self.is_active and self.show_rulers
         self.h_ruler.set_active(rulers_active)
         self.v_ruler.set_active(rulers_active)
@@ -138,10 +193,11 @@ class PageWidget(QWidget):
         if self.is_active != active:
             self.is_active = active
             self.update_style()
-
+            
+    
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
-            # Calculate the position of the click relative to the image itself (excluding rulers)
+            # Вычисляем позицию клика относительно самой картинки (исключая линейки)
             pos_in_image = self.image_label.mapFrom(self, event.pos())
             if 0 <= pos_in_image.x() < self.image_label.width() and 0 <= pos_in_image.y() < self.image_label.height():
                 self.callback(self.page_index, pos_in_image.x(), pos_in_image.y())
@@ -149,18 +205,21 @@ class PageWidget(QWidget):
                 self.callback(self.page_index)
 
 
-# Helper class for clickable thumbnails
+# Вспомогательный класс для кликабельных эскизов
 class ClickableThumbnail(QLabel):
 
-    def __init__(self, page_index, callback, handler):
+    def __init__(self, page_index, callback, handler, main_window=None):
         super().__init__()
+
         self.page_index = page_index
         self.callback = callback
         self.handler = handler
+        self.main_window = main_window
+
         self.is_active = False
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.update_style()
-        self.setAcceptDrops(True) # NEW: Allow receiving files Drag&Drop
+        self.setAcceptDrops(True) # НОВОЕ: Разрешаем прием файлов Drag&Drop
 
     def update_style(self):
         if self.is_active:
@@ -175,18 +234,18 @@ class ClickableThumbnail(QLabel):
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
-            self.drag_start_pos = event.pos() # Remember the position for dragging
+            self.drag_start_pos = event.pos() # Запоминаем позицию для перетаскивания
             self.callback(self.page_index)
         elif event.button() == Qt.MouseButton.RightButton:
             self.handler.handle_context_menu(self, event.pos())
 
-    # NEW: Handle mouse movement for start Drag & Drop
+    # НОВОЕ: Обрабатываем перемещение мыши для старта Drag & Drop
     def mouseMoveEvent(self, event):
         if not (event.buttons() & Qt.MouseButton.LeftButton):
             return
         if not hasattr(self, 'drag_start_pos'):
             return
-        # Checking that the cursor has moved enough to start dragging
+        # Проверяем, что курсор сместился достаточно для старта перетаскивания
         if (event.pos() - self.drag_start_pos).manhattanLength() < QApplication.startDragDistance():
             return
         
@@ -195,7 +254,7 @@ class ClickableThumbnail(QLabel):
         mime_data.setText(str(self.page_index))
         drag.setMimeData(mime_data)
         
-        # Create a semi-transparent sketch for a drag effect
+        # Создаем полупрозрачный эскиз для эффекта перетаскивания
         pixmap = self.pixmap()
         if pixmap:
             drag.setPixmap(pixmap.scaledToWidth(80, Qt.TransformationMode.SmoothTransformation))
@@ -203,33 +262,141 @@ class ClickableThumbnail(QLabel):
             
         drag.exec(Qt.DropAction.MoveAction)
 
-    # NEW: Allow you to drag and drop data above this widget
+    # НОВОЕ: Позволяем перетаскивать данные над этим виджетом
+        # ==========================================================
+    # ПРИЁМ СТРАНИЦ ИЗ МОДУЛЯ «ОБМЕН СТРАНИЦАМИ»
+    # ==========================================================
+
     def dragEnterEvent(self, event):
-        if event.mimeData().hasText():
-            event.acceptProposedAction()
 
-    # NEW: CRITICAL for dragging backwards (up/left).
+        mime = event.mimeData()
+
+        # Страница из pdftransfer.py
+        if mime.hasFormat("application/x-librepage-pdf-page"):
+            event.acceptProposedAction()
+            return
+
+        # Старый Drag & Drop внутри LibrePage
+        if mime.hasText():
+            event.acceptProposedAction()
+            return
+
+        event.ignore()
+
+
     def dragMoveEvent(self, event):
-        if event.mimeData().hasText():
-            event.acceptProposedAction()
 
-    # NEW: Handle draggable page reset
+        mime = event.mimeData()
+
+        # Страница из pdftransfer.py
+        if mime.hasFormat("application/x-librepage-pdf-page"):
+            event.acceptProposedAction()
+            return
+
+        # Старый Drag & Drop внутри LibrePage
+        if mime.hasText():
+            event.acceptProposedAction()
+            return
+
+        event.ignore()
+
+
     def dropEvent(self, event):
-        source_index_str = event.mimeData().text()
+
+        mime = event.mimeData()
+
+        # ======================================================
+        # СТРАНИЦЫ ИЗ МОДУЛЯ «ОБМЕН СТРАНИЦАМИ»
+        # ======================================================
+
+        if mime.hasFormat("application/x-librepage-pdf-page"):
+
+            try:
+
+                payload = bytes(
+                    mime.data(
+                        "application/x-librepage-pdf-page"
+                    )
+                ).decode("utf-8")
+
+                # Формат:
+                # полный путь к PDF
+                # номера страниц через запятую
+                #
+                # Например:
+                # D:\test.pdf
+                # 2,3,4,5
+
+                source_path, source_pages_text = payload.split(
+                    "\n",
+                    1
+                )
+
+                source_path = os.path.abspath(source_path)
+
+                # Получаем список страниц
+                source_pages = [
+                    int(x.strip())
+                    for x in source_pages_text.split(",")
+                    if x.strip()
+                ]
+
+            except Exception:
+
+                traceback.print_exc()
+                event.ignore()
+                return
+
+            # Передаём список страниц главному окну LibrePage
+            main_window = self.main_window
+
+            if main_window is not None:
+
+                if main_window.handle_pdftransfer_drop(
+                    source_path,
+                    source_pages,
+                    self.page_index
+                ):
+
+                    event.acceptProposedAction()
+                    return
+
+            event.ignore()
+            return
+
+        # ======================================================
+        # СТАРЫЙ DRAG & DROP LIBREPAGE
+        # ======================================================
+
+        source_index_str = mime.text()
+
         if source_index_str.isdigit():
+
             source_index = int(source_index_str)
             target_index = self.page_index
+
             if source_index != target_index:
-                if hasattr(self.handler, 'handle_drag_drop'):
-                    self.handler.handle_drag_drop(source_index, target_index)
+
+                if hasattr(
+                    self.handler,
+                    "handle_drag_drop"
+                ):
+                    self.handler.handle_drag_drop(
+                        source_index,
+                        target_index
+                    )
+
                 event.acceptProposedAction()
+                return
+
+        event.ignore()
 
 
-# Dialog box for replacing missing fonts
+# Диалоговое окно для подмены отсутствующих шрифтов
 class MissingFontDialog(QDialog):
     def __init__(self, missing_font_name, system_fonts, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Missing font!")
+        self.setWindowTitle("Отсутствует шрифт!")
         self.setModal(True)
         self.resize(550, 150)
         self.result_action = "skip"
@@ -237,30 +404,30 @@ class MissingFontDialog(QDialog):
         
         layout = QVBoxLayout(self)
         
-        lbl = QLabel(f"<b>Attention!</b> Missing font detected during conversion:<br>"
+        lbl = QLabel(f"<b>Внимание!</b> При конвертации обнаружен отсутствующий шрифт:<br>"
                       f"<span style='color: #d32f2f; font-size: 14px;'><b>{missing_font_name}</b></span><br><br>"
-                      f"The font is not embedded in PDF and is missing from your system.<br>"
-                      f"Select the system font to replace, or skip this sheet.", self)
+                      f"Шрифт не встроен в PDF и отсутствует в вашей системе.<br>"
+                      f"Выберите системный шрифт для замены, либо пропустите этот лист.", self)
         layout.addWidget(lbl)
         
         btn_layout = QHBoxLayout()
         
-        # Left side (list and REPLACE button)
+        # Левая часть (список и кнопка ЗАМЕНИТЬ)
         left_layout = QHBoxLayout()
         self.combo_fonts = QComboBox(self)
         self.combo_fonts.setMinimumWidth(200)
         for name, path in system_fonts.items():
             self.combo_fonts.addItem(name, path)
             
-        btn_replace = QPushButton("REPLACE", self)
+        btn_replace = QPushButton("ЗАМЕНИТЬ", self)
         btn_replace.setStyleSheet("background-color: #d32f2f; color: white; font-weight: bold; border-radius: 4px; padding: 4px 8px;")
         btn_replace.clicked.connect(self.on_replace)
         
         left_layout.addWidget(self.combo_fonts)
         left_layout.addWidget(btn_replace)
         
-        # Right side (SKIP SHEET button)
-        btn_skip = QPushButton("SKIP THE LETTER", self)
+        # Правая часть (кнопка ПРОПУСТИТЬ ЛИСТ)
+        btn_skip = QPushButton("ПРОПУСТИТЬ ЛИСТ", self)
         btn_skip.setStyleSheet("background-color: #e0e0e0; color: black; font-weight: bold; border-radius: 4px; padding: 4px 8px;")
         btn_skip.clicked.connect(self.on_skip)
         
@@ -286,7 +453,7 @@ class MissingFontDialog(QDialog):
 class LicenseViewer(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("License")
+        self.setWindowTitle("Лицензия")
         self.setMinimumSize(400, 500)
         layout = QVBoxLayout(self)
         self.text_edit = QTextEdit()
@@ -297,9 +464,218 @@ class LicenseViewer(QDialog):
             with open(license_path, "r", encoding="utf-8") as f:
                 self.text_edit.setPlainText(f.read())
         else:
-            self.text_edit.setPlainText("File LICENSE.txt not found.")
-        layout.addWidget(QLabel("License Agreement:"))
+            self.text_edit.setPlainText("Файл LICENSE.txt не найден.")
+        layout.addWidget(QLabel("Лицензионное соглашение:"))
         layout.addWidget(self.text_edit)
+        
+        
+class CropPreviewOverlay(QWidget):
+    """
+    Временный слой предварительного просмотра кадрирования.
+
+    Показывает линии там, где будет выполнен срез.
+    Ничего не изменяет в самой странице PDF.
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        self.setAttribute(
+            Qt.WidgetAttribute.WA_TransparentForMouseEvents,
+            True
+        )
+
+        self.setAttribute(
+            Qt.WidgetAttribute.WA_NoSystemBackground,
+            True
+        )
+
+        self.top_mm = 0.0
+        self.bottom_mm = 0.0
+        self.left_mm = 0.0
+        self.right_mm = 0.0
+
+        self.page_width_mm = 0.0
+        self.page_height_mm = 0.0
+
+        self.setVisible(False)
+
+    def set_page_size(self, width_mm, height_mm):
+        """
+        Передаём реальный размер страницы PDF в миллиметрах.
+        """
+
+        self.page_width_mm = float(width_mm)
+        self.page_height_mm = float(height_mm)
+
+        self.update()
+
+    def set_crop_values(
+        self,
+        top,
+        bottom,
+        left,
+        right
+    ):
+        """
+        Устанавливает значения кадрирования.
+        """
+
+        self.top_mm = max(0.0, float(top))
+        self.bottom_mm = max(0.0, float(bottom))
+        self.left_mm = max(0.0, float(left))
+        self.right_mm = max(0.0, float(right))
+
+        has_lines = (
+            self.top_mm > 0
+            or self.bottom_mm > 0
+            or self.left_mm > 0
+            or self.right_mm > 0
+        )
+
+        self.setVisible(has_lines)
+
+        self.raise_()
+        self.update()
+
+    def clear(self):
+        """
+        Полностью убрать линии.
+        """
+
+        self.top_mm = 0.0
+        self.bottom_mm = 0.0
+        self.left_mm = 0.0
+        self.right_mm = 0.0
+
+        self.setVisible(False)
+        self.update()
+
+    def paintEvent(self, event):
+
+        if not self.isVisible():
+            return
+
+        painter = QPainter(self)
+
+        painter.setRenderHint(
+            QPainter.RenderHint.Antialiasing,
+            False
+        )
+
+        # Серый цвет линии
+        pen = QPen(
+            QColor(120, 120, 120)
+        )
+
+        # Толщина линии
+        pen.setWidth(2)
+
+        # Пунктир
+        pen.setStyle(
+            Qt.PenStyle.DashLine
+        )
+
+        painter.setPen(pen)
+
+        width = self.width()
+        height = self.height()
+
+        # --------------------------------------------------
+        # СВЕРХУ
+        # --------------------------------------------------
+
+        if (
+            self.top_mm > 0
+            and self.page_height_mm > 0
+        ):
+
+            y = (
+                self.top_mm
+                / self.page_height_mm
+                * height
+            )
+
+            painter.drawLine(
+                0,
+                int(y),
+                width,
+                int(y)
+            )
+
+        # --------------------------------------------------
+        # СНИЗУ
+        # --------------------------------------------------
+
+        if (
+            self.bottom_mm > 0
+            and self.page_height_mm > 0
+        ):
+
+            y = (
+                height
+                - (
+                    self.bottom_mm
+                    / self.page_height_mm
+                    * height
+                )
+            )
+
+            painter.drawLine(
+                0,
+                int(y),
+                width,
+                int(y)
+            )
+
+        # --------------------------------------------------
+        # СЛЕВА
+        # --------------------------------------------------
+
+        if (
+            self.left_mm > 0
+            and self.page_width_mm > 0
+        ):
+
+            x = (
+                self.left_mm
+                / self.page_width_mm
+                * width
+            )
+
+            painter.drawLine(
+                int(x),
+                0,
+                int(x),
+                height
+            )
+
+        # --------------------------------------------------
+        # СПРАВА
+        # --------------------------------------------------
+
+        if (
+            self.right_mm > 0
+            and self.page_width_mm > 0
+        ):
+
+            x = (
+                width
+                - (
+                    self.right_mm
+                    / self.page_width_mm
+                    * width
+                )
+            )
+
+            painter.drawLine(
+                int(x),
+                0,
+                int(x),
+                height
+            )
+
+        painter.end()
 
 class BaseImposingModule(QMainWindow):
 
@@ -308,51 +684,52 @@ class BaseImposingModule(QMainWindow):
         self.setWindowTitle(title)
         self.resize(1300, 800)
         self.current_zoom = 100
-        
-        self.open_docs = {} # Dictionary {path: doc}
+
+
+        self.open_docs = {}
         self.doc = None
         self.pages_in_row = 1
-        self.current_file_path = None  # We store the path to the open file
-        self.page_widgets = [] # List for page widgets
-        self.thumb_widgets = [] # List for thumbnail widgets
-        self.active_page_index = -1 # Index of the page selected for printing
-        self.rulers_enabled = True # Status of inclusion of rulers
+        self.current_file_path = None
+        self.page_widgets = []
+        self.thumb_widgets = []
+        self.active_page_index = -1
+        self.rulers_enabled = True
 
-        # NEW: Photo Selection Manager
+        # НОВОЕ: Менеджер выделения фото
         self.image_selection_manager = ImageSelectionManager()
         self.is_image_select_mode = False
         
-        # NEW: Storing path to external editor
+        # НОВОЕ: Хранение пути к внешнему редактору
         self.external_editor_path = None
         
-        # Initializing the mouse handler
+        # Инициализируем обработчик мыши
         self.mouse_handler = ThumbnailHandler(self)
         
-        # Undo module
+        # Модуль отмены действий
         self.history_manager = HistoryManager(self)
         
-        # List of buttons for managing styles
+        # Список кнопок для управления стилями
         self.mode_buttons = []
         
-        # Main widget
+        # Основной виджет
         main_widget = QWidget()
         self.setCentralWidget(main_widget)
         layout = QVBoxLayout(main_widget)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        # 1. Top panel (converted to group layout)
+        # 1. Верхняя панель (переделана в групповую раскладку)
         top_bar_container = QVBoxLayout()
         top_bar_container.setContentsMargins(5, 5, 5, 5)
 
         top_row1 = QHBoxLayout()
         top_row2 = QHBoxLayout()
         
-        # Setting the distance between groups (10px) - exactly at 2 times the distance between the buttons (5px)
+        # Устанавливаем расстояние между группами (10px) - ровно в 2 раза больше расстояния между кнопками (5px)
         top_row1.setSpacing(20)
         top_row2.setSpacing(20)
 
-        # Style
+        # Стили
         btn_style = "background-color: #e0e0e0; color: black; font-weight: bold; border: 1px solid #999999; border-radius: 6px; padding: 5px 10px;"
         style_light_gray = btn_style
         style_dark_gray = btn_style
@@ -362,201 +739,343 @@ class BaseImposingModule(QMainWindow):
             group_layout = QVBoxLayout()
             group_layout.setSpacing(2)
             
-            lbl = QLabel(title.upper()) # Group name in capital letters
+            lbl = QLabel(title.upper()) # Имя группы большими буквами
             lbl.setStyleSheet(group_title_style)
             lbl.setAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignBottom)
             group_layout.addWidget(lbl)
 
             btn_layout = QHBoxLayout()
-            btn_layout.setSpacing(5) # Distance between buttons 5px
+            btn_layout.setSpacing(5) # Расстояние между кнопками 5px
             for btn in buttons:
                 btn_layout.addWidget(btn)
             group_layout.addLayout(btn_layout)
             return group_layout
 
-        # === CREATING BUTTONS ===
+        # === СОЗДАНИЕ КНОПОК ===
         
-        # Styling History Buttons (since they are created internally HistoryManager)
+        # Стилизация кнопок истории (так как они создаются внутри HistoryManager)
         self.history_manager.btn_undo.setStyleSheet(btn_style)
         self.history_manager.btn_redo.setStyleSheet(btn_style)
 
-        # --- File buttons ---
-        self.btn_open = QPushButton("Open")
+        # --- Кнопки Файл ---
+        self.btn_open = QPushButton()
+        self.btn_open.setIcon(QIcon(resource_path("resources/icon/open.png"
+        )))
+        self.btn_open.setIconSize(QSize(23, 23))
+        self.btn_open.setToolTip("Открыть файл")
         self.btn_open.setStyleSheet(style_light_gray)
         self.btn_open.clicked.connect(self.open_file)
 
-        self.btn_save = QPushButton("Save")
+        self.btn_save = QPushButton()
+        self.btn_save.setIcon(QIcon(resource_path("resources/icon/save.png"
+        )))
+        self.btn_save.setIconSize(QSize(23, 23))
+        self.btn_save.setToolTip("Сохранить файл")
         self.btn_save.setStyleSheet(style_light_gray)
         self.btn_save.clicked.connect(self.save_file)
 
-        self.btn_close = QPushButton("Close")
+        self.btn_close = QPushButton()
+        self.btn_close.setIcon(QIcon(resource_path("resources/icon/close.png"
+        )))
+        self.btn_close.setIconSize(QSize(23, 23))
+        self.btn_close.setToolTip("Закрыть документ")
         self.btn_close.setStyleSheet(style_light_gray)
         self.btn_close.clicked.connect(self.close_document)
 
-        self.btn_export = QPushButton("Export")
+        self.btn_export = QPushButton()
+        self.btn_export.setIcon(QIcon(resource_path("resources/icon/export.png"
+        )))
+        self.btn_export.setIconSize(QSize(23, 23))
+        self.btn_export.setToolTip("PDF в Image")
         self.btn_export.setStyleSheet(style_light_gray)
         self.btn_export.clicked.connect(self.open_export_module)
 
-        # --- Image V PDF ---
-        self.btn_image_to_pdf = QPushButton("Image to PDF")
-        self.btn_image_to_pdf.setStyleSheet(style_light_gray)
+        # --- Image в PDF ---
+        self.btn_image_to_pdf = QPushButton()
+        self.btn_image_to_pdf.setIcon(QIcon(resource_path("resources/icon/imagetopdf.png"
+        )))
+        self.btn_image_to_pdf.setIconSize(QSize(23, 23))
         self.btn_image_to_pdf.setToolTip(
-            "Merge images into PDF and open it in LibrePage"
+            "Объединить изображения в PDF и открыть его в LibrePage"
         )
+        self.btn_image_to_pdf.setStyleSheet(style_light_gray)
         self.btn_image_to_pdf.clicked.connect(self.open_image_to_pdf)
 
-        self.btn_print = QPushButton("Print")
+        
+        self.btn_print = QPushButton()
+        self.btn_print.setIcon(QIcon(resource_path("resources/icon/print.png"
+        )))
+
+        self.btn_print.setIconSize(QSize(23, 23))
+        self.btn_print.setToolTip("Печать")
         self.btn_print.setStyleSheet(style_light_gray)
         self.btn_print.clicked.connect(self.open_print_module)
 
-        # --- Page Buttons ---
-        self.btn_cut = QPushButton("Cut")
+        # --- Кнопки Страницы ---
+        self.btn_cut = QPushButton()
+        self.btn_cut.setIcon(QIcon(resource_path("resources/icon/cutpage.png"
+        )))
+        self.btn_cut.setIconSize(QSize(23, 23))
+        self.btn_cut.setToolTip("Разрезать")
         self.btn_cut.setStyleSheet(style_dark_gray)
         self.btn_cut.clicked.connect(self.open_cutpage_module)
 
-        self.btn_merge = QPushButton("Merge")
+        self.btn_merge = QPushButton()
+        self.btn_merge.setIcon(QIcon(resource_path("resources/icon/connectpage.png"
+        )))
+        self.btn_merge.setIconSize(QSize(23, 23))
+        self.btn_merge.setToolTip("Склеить")
         self.btn_merge.setStyleSheet(style_dark_gray)
         self.btn_merge.clicked.connect(self.open_merge_module)
 
-        self.btn_reverse = QPushButton("Reverse")
+        self.btn_reverse = QPushButton()
+        self.btn_reverse.setIcon(QIcon(resource_path("resources/icon/revers.png"
+        )))
+        self.btn_reverse.setIconSize(QSize(23, 23))
+        self.btn_reverse.setToolTip("Реверс")
         self.btn_reverse.setStyleSheet(style_dark_gray)
         self.btn_reverse.clicked.connect(self.open_reverse_module)
 
-        self.btn_cheredov = QPushButton("Alternation")
+        self.btn_cheredov = QPushButton()
+        self.btn_cheredov.setIcon(QIcon(resource_path("resources/icon/cheredov.png"
+        )))
+        self.btn_cheredov.setIconSize(QSize(23, 23))
+        self.btn_cheredov.setToolTip("Чередование")
         self.btn_cheredov.setStyleSheet(style_dark_gray)
         self.btn_cheredov.clicked.connect(self.open_cheredov_module)
 
-        self.btn_rotate = QPushButton("Rotate")
+        self.btn_rotate = QPushButton()
+        self.btn_rotate.setIcon(QIcon(resource_path("resources/icon/rotatepage.png"
+        )))
+        self.btn_rotate.setIconSize(QSize(23, 23))
+        self.btn_rotate.setToolTip("Поворот")
         self.btn_rotate.setStyleSheet(style_dark_gray)
         self.btn_rotate.clicked.connect(self.open_rotate_module)
 
-        self.btn_move = QPushButton("Shift")
+        self.btn_move = QPushButton()
+        self.btn_move.setIcon(QIcon(resource_path("resources/icon/move.png"
+        )))
+        self.btn_move.setIconSize(QSize(23, 23))
+        self.btn_move.setToolTip("Сдвиг")
         self.btn_move.setStyleSheet(style_dark_gray)
         self.btn_move.clicked.connect(self.open_move_module)
 
-        self.btn_crop = QPushButton("Crop")
+        self.btn_crop = QPushButton()
+        self.btn_crop.setIcon(QIcon(resource_path("resources/icon/crop.png"
+        )))
+        self.btn_crop.setIconSize(QSize(23, 23))
+        self.btn_crop.setToolTip("Кадрировать")
         self.btn_crop.setStyleSheet(style_dark_gray)
         self.btn_crop.clicked.connect(self.open_crop_module)
         
-        # New Fields button+
-        self.btn_fields = QPushButton("Margins+")
+        # Новая кнопка Поля+
+        self.btn_fields = QPushButton()
+        self.btn_fields.setIcon(QIcon(resource_path("resources/icon/fields.png"
+        )))
+        self.btn_fields.setIconSize(QSize(23, 23))
+        self.btn_fields.setToolTip("Поля+")
         self.btn_fields.setStyleSheet(style_dark_gray)
         self.btn_fields.clicked.connect(self.open_fields_module)
 
-        # --- Buttons Convert ---
-        self.btn_convert_color = QPushButton("Colors")
+        # Обмен страницами
+        self.btn_pdftransfer = QPushButton()
+        self.btn_pdftransfer.setIcon(QIcon(resource_path("resources/icon/pdftransfer.png"
+        )))
+        self.btn_pdftransfer.setIconSize(QSize(23, 23))
+        self.btn_pdftransfer.setToolTip("Обмен страницами")
+        self.btn_pdftransfer.setStyleSheet(style_dark_gray)
+        self.btn_pdftransfer.clicked.connect(self.open_pdftransfer_module)
+
+        # --- Кнопки Конвертировать ---
+        self.btn_convert_color = QPushButton()
+        self.btn_convert_color.setIcon(QIcon(resource_path("resources/icon/convertcolor.png"
+        )))
+        self.btn_convert_color.setIconSize(QSize(23, 23))
+        self.btn_convert_color.setToolTip("Цвета")
         self.btn_convert_color.setStyleSheet(style_dark_gray)
         self.btn_convert_color.clicked.connect(self.open_convertcolor_module)
 
-        self.btn_curves = QPushButton("Text to curves")
+        self.btn_curves = QPushButton()
+        self.btn_curves.setIcon(QIcon(resource_path("resources/icon/curves.png"
+        )))
+        self.btn_curves.setIconSize(QSize(23, 23))
+        self.btn_curves.setToolTip("Текст в кривые")
         self.btn_curves.setStyleSheet(style_dark_gray)
         self.btn_curves.clicked.connect(self.open_curves_module)
 
-        # Forming 1-and row (File | Pages | Convert)
-        file_group = create_group_layout("File", [
+        # Формируем 1-й ряд (Файл | Страницы | Конвертировать)
+        file_group = create_group_layout("Файл", [
             self.history_manager.btn_undo, 
             self.history_manager.btn_redo, 
             self.btn_open, self.btn_save, self.btn_close, self.btn_export, self.btn_image_to_pdf, self.btn_print
         ])
         top_row1.addLayout(file_group)
 
-        pages_group = create_group_layout("Pages", [
+        pages_group = create_group_layout("Страницы", [
             self.btn_cut, self.btn_merge, self.btn_reverse, self.btn_cheredov, 
-            self.btn_rotate, self.btn_move, self.btn_crop, self.btn_fields
+            self.btn_rotate, self.btn_move, self.btn_crop, self.btn_fields, self.btn_pdftransfer
         ])
         top_row1.addLayout(pages_group)
 
-        convert_group = create_group_layout("Convert", [self.btn_convert_color, self.btn_curves])
+        convert_group = create_group_layout("Конвертировать", [self.btn_convert_color, self.btn_curves])
         top_row1.addLayout(convert_group)
         top_row1.addStretch()
 
-        # --- Buttons Layout ---
-        self.btn_booklet = QPushButton("Booklet")
+        # --- Кнопки Макет ---
+        self.btn_booklet = QPushButton()
+        self.btn_booklet.setIcon(QIcon(resource_path("resources/icon/booklet.png"
+        )))
+        self.btn_booklet.setIconSize(QSize(23, 23))
+        self.btn_booklet.setToolTip("Буклет")
         self.btn_booklet.setStyleSheet(style_light_gray)
         self.btn_booklet.clicked.connect(self.open_booklet_module)
 
-        self.btn_booklet2 = QPushButton("Booklet in 2 fold")
+        self.btn_booklet2 = QPushButton()
+        self.btn_booklet2.setIcon(QIcon(resource_path("resources/icon/booklet2.png"
+        )))
+        self.btn_booklet2.setIconSize(QSize(23, 23))
+        self.btn_booklet2.setToolTip("Буклет в 2 сгиба")
         self.btn_booklet2.setStyleSheet(style_light_gray)
         self.btn_booklet2.clicked.connect(self.open_booklet2_module)
 
-        self.btn_spusk = QPushButton("Page Imposition")
+        self.btn_spusk = QPushButton()
+        self.btn_spusk.setIcon(QIcon(resource_path("resources/icon/SPUSK.png"
+        )))
+        self.btn_spusk.setIconSize(QSize(23, 23))
+        self.btn_spusk.setToolTip("Спуск полос")
         self.btn_spusk.setStyleSheet(style_light_gray)
         self.btn_spusk.clicked.connect(self.open_spusk_module)
 
-        self.btn_multiply = QPushButton("Step and Repeat")
+        self.btn_multiply = QPushButton()
+        self.btn_multiply.setIcon(QIcon(resource_path("resources/icon/multiply.png"
+        )))
+        self.btn_multiply.setIconSize(QSize(23, 23))
+        self.btn_multiply.setToolTip("Размножить")
         self.btn_multiply.setStyleSheet(style_light_gray)
         self.btn_multiply.clicked.connect(self.open_multiply_module)
 
-        self.btn_number = QPushButton("Page Numbering")
+        self.btn_number = QPushButton()
+        self.btn_number.setIcon(QIcon(resource_path("resources/icon/numberpage.png"
+        )))
+        self.btn_number.setIconSize(QSize(23, 23))
+        self.btn_number.setToolTip("Нумерация")
         self.btn_number.setStyleSheet(style_light_gray)
         self.btn_number.clicked.connect(self.open_number_module)
 
-        self.btn_mask = QPushButton("Whiteout")
+        self.btn_mask = QPushButton()
+        self.btn_mask.setIcon(QIcon(resource_path("resources/icon/mask.png"
+        )))
+        self.btn_mask.setIconSize(QSize(23, 23))
+        self.btn_mask.setToolTip("Скрыть")
         self.btn_mask.setStyleSheet(style_light_gray)
         self.btn_mask.clicked.connect(self.open_mask_module)
 
-        self.btn_bg = QPushButton("Page Background")
+        self.btn_bg = QPushButton()
+        self.btn_bg.setIcon(QIcon(resource_path("resources/icon/background.png"
+        )))
+        self.btn_bg.setIconSize(QSize(23, 23))
+        self.btn_bg.setToolTip("Фон")
         self.btn_bg.setStyleSheet(style_light_gray)
         self.btn_bg.clicked.connect(self.open_background_module)
 
-        # --- Button Size ---
-        self.btn_resize = QPushButton("Sheet size")
+        # --- Кнопки Размер ---
+        self.btn_resize = QPushButton()
+        self.btn_resize.setIcon(QIcon(resource_path("resources/icon/scale.png"
+        )))
+        self.btn_resize.setIconSize(QSize(23, 23))
+        self.btn_resize.setToolTip("Размер листа")
         self.btn_resize.setStyleSheet(style_dark_gray)
         self.btn_resize.clicked.connect(self.open_size_module)
 
-        self.btn_scale = QPushButton("Content Size")
+        self.btn_scale = QPushButton()
+        self.btn_scale.setIcon(QIcon(resource_path("resources/icon/pagezoom.png"
+        )))
+        self.btn_scale.setIconSize(QSize(23, 23))
+        self.btn_scale.setToolTip("Размер содержимого")
         self.btn_scale.setStyleSheet(style_dark_gray)
         self.btn_scale.clicked.connect(self.open_scale_module)
 
-        # --- Photo Buttons ---
-        self.btn_select_image = QPushButton("🟦 ↗ Choose")
+        # --- Кнопки Фото ---
+        self.btn_select_image = QPushButton()
+        self.btn_select_image.setIcon(QIcon(resource_path("resources/icon/imageselect.png"
+        )))
+        self.btn_select_image.setIconSize(QSize(23, 23))
+        self.btn_select_image.setToolTip("Выбрать изображение")
         self.btn_select_image.setStyleSheet(style_light_gray)
         self.btn_select_image.setCheckable(True)
         self.btn_select_image.clicked.connect(self.toggle_image_select_mode)
 
-        self.btn_imageclone = QPushButton("Clone")
+        self.btn_imageclone = QPushButton()
+        self.btn_imageclone.setIcon(QIcon(resource_path("resources/icon/imageclone.png"
+        )))
+        self.btn_imageclone.setIconSize(QSize(23, 23))
+        self.btn_imageclone.setToolTip("Клонировать")
         self.btn_imageclone.setStyleSheet(style_light_gray)
         self.btn_imageclone.clicked.connect(self.open_imageclone_module)
 
-        self.btn_photocorrection = QPushButton("Correction")
+        self.btn_photocorrection = QPushButton()
+        self.btn_photocorrection.setIcon(QIcon(resource_path("resources/icon/photocorrection.png"
+        )))
+        self.btn_photocorrection.setIconSize(QSize(23, 23))
+        self.btn_photocorrection.setToolTip("Коррекция")
         self.btn_photocorrection.setStyleSheet(style_light_gray)
         self.btn_photocorrection.clicked.connect(self.open_photocorrection_module)
 
-        self.btn_openeditphoto = QPushButton("Open in editor")
+        self.btn_openeditphoto = QPushButton()
+        self.btn_openeditphoto.setIcon(QIcon(resource_path("resources/icon/openeditphoto.png"
+        )))
+        self.btn_openeditphoto.setIconSize(QSize(23, 23))
+        self.btn_openeditphoto.setToolTip("Открыть в редакторе")
         self.btn_openeditphoto.setStyleSheet(style_light_gray)
         self.btn_openeditphoto.clicked.connect(self.open_edit_photo_module)
 
-        # Forming 2-and row (Layout | Size | Photo)
-        layout_group = create_group_layout("Layout", [
+        # --- Кнопки ЗАЩИТА ---
+        self.btn_logo = QPushButton()
+        self.btn_logo.setIcon(QIcon(resource_path("resources/icon/logopage.png"
+        )))
+        self.btn_logo.setIconSize(QSize(23, 23))
+        self.btn_logo.setToolTip("Поместить лого")
+        self.btn_logo.setStyleSheet(style_light_gray)
+        self.btn_logo.clicked.connect(self.open_logo_module)
+
+        # Формируем 2-й ряд (Макет | Размер | Фото)
+        layout_group = create_group_layout("Макет", [
             self.btn_booklet, self.btn_booklet2, self.btn_spusk, self.btn_multiply, 
             self.btn_number, self.btn_mask, self.btn_bg
         ])
         top_row2.addLayout(layout_group)
 
-        size_group = create_group_layout("Size", [self.btn_resize, self.btn_scale])
+        size_group = create_group_layout("Размер", [self.btn_resize, self.btn_scale])
         top_row2.addLayout(size_group)
 
-        photo_group = create_group_layout("Photo", [
+        photo_group = create_group_layout("Фото", [
             self.btn_select_image, self.btn_imageclone, 
             self.btn_photocorrection, self.btn_openeditphoto
         ])
         top_row2.addLayout(photo_group)
+        
+        # --- Группа ЗАЩИТА ---
+        protection_group = create_group_layout("Защита", [
+            self.btn_logo
+        ])
+        top_row2.addLayout(protection_group)
+
         top_row2.addStretch()
 
-        # Assembling a panel with an indent instead of a separator
+        # Собираем панель с отступом вместо разделителя
         top_bar_container.addLayout(top_row1)
         top_bar_container.addSpacing(10)
         top_bar_container.addLayout(top_row2)
         
         layout.addLayout(top_bar_container)
 
-        # 2. Preview area
+        # 2. Область предпросмотра
         middle_container = QWidget()
         middle_layout = QHBoxLayout(middle_container)
         middle_layout.setContentsMargins(0, 0, 0, 0)
         middle_layout.setSpacing(0)
 
-        # Sidebar button (left)
+        # Кнопка сайдбара (левая)
         self.btn_toggle_thumb = QPushButton("▶")
         self.btn_toggle_thumb.setFixedWidth(25)
         self.btn_toggle_thumb.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
@@ -569,13 +1088,13 @@ class BaseImposingModule(QMainWindow):
 
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
         
-        # Left thumbnail panel
+        # Левая панель эскизов
         self.thumb_panel = QWidget()
         self.thumb_panel_layout = QVBoxLayout(self.thumb_panel)
         self.thumb_panel_layout.setContentsMargins(0, 0, 0, 0)
         self.thumb_panel_layout.setSpacing(0)
         
-        self.btn_toggle_cols = QPushButton("Switch to 1 column")
+        self.btn_toggle_cols = QPushButton("Переключить в 1 колонку")
         self.btn_toggle_cols.setStyleSheet(btn_style)
         self.btn_toggle_cols.clicked.connect(self.toggle_thumb_columns)
         self.thumb_panel_layout.addWidget(self.btn_toggle_cols)
@@ -594,13 +1113,13 @@ class BaseImposingModule(QMainWindow):
         self.thumb_panel.hide()
         self.splitter.addWidget(self.thumb_panel)
         
-        # Preview area
+        # Область предпросмотра
         self.scroll_area = QScrollArea()
         self.scroll_area.setStyleSheet("background-color: #555;")
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.verticalScrollBar().valueChanged.connect(self.update_page_info)
         
-        # Set up an event filter to intercept the mouse wheel in single sheet mode
+        # Устанавливаем фильтр событий для перехвата колесика мыши в режиме одного листа
         self.scroll_area.viewport().installEventFilter(self)
         
         self.preview_container = QWidget()
@@ -610,15 +1129,15 @@ class BaseImposingModule(QMainWindow):
         
         self.splitter.addWidget(self.scroll_area)
         
-        # Right file pane
+        # Правая панель файлов
         self.files_panel = FilesPanel(self)
-        self.files_panel.hide() # Initially hidden
+        self.files_panel.hide() # Изначально скрыта
         self.splitter.addWidget(self.files_panel)
         
         self.splitter.setSizes([200, 800, 150])
         middle_layout.addWidget(self.splitter)
 
-        # Sidebar button (right)
+        # Кнопка сайдбара (правая)
         self.btn_toggle_files = QPushButton("◀")
         self.btn_toggle_files.setFixedWidth(25)
         self.btn_toggle_files.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
@@ -631,34 +1150,34 @@ class BaseImposingModule(QMainWindow):
         
         layout.addWidget(middle_container)
 
-        # 3. Bottom panel
+        # 3. Нижняя панель
         bottom_bar = QHBoxLayout()
         
-        # Scroll mode switches
+        # Переключатели режима прокрутки
         self.btn_scroll_cont = QPushButton("■ ■")
         self.btn_scroll_cont.setFixedSize(30, 25)
-        self.btn_scroll_cont.setToolTip("Smooth scrolling")
+        self.btn_scroll_cont.setToolTip("Плавная прокрутка")
         self.btn_scroll_cont.clicked.connect(lambda: self.set_scroll_mode('continuous'))
         
         self.btn_scroll_page = QPushButton("█")
         self.btn_scroll_page.setFixedSize(30, 25)
-        self.btn_scroll_page.setToolTip("Page view (a new one appears immediately)")
+        self.btn_scroll_page.setToolTip("Постраничный просмотр (появляется сразу новый)")
         self.btn_scroll_page.clicked.connect(lambda: self.set_scroll_mode('page'))
         
         bottom_bar.addWidget(self.btn_scroll_cont)
         bottom_bar.addWidget(self.btn_scroll_page)
         
-        bottom_bar.addSpacing(10) # Space between button groups
+        bottom_bar.addSpacing(10) # Отступ между группами кнопок
         
-        # Ruler switches
-        self.btn_rulers_on = QPushButton("📏 incl")
-        self.btn_rulers_on.setFixedSize(50, 25)
-        self.btn_rulers_on.setToolTip("Enable rulers")
+        # Переключатели линеек
+        self.btn_rulers_on = QPushButton("📏 Вкл")
+        self.btn_rulers_on.setFixedSize(65, 25)
+        self.btn_rulers_on.setToolTip("Включить линейки")
         self.btn_rulers_on.clicked.connect(lambda: self.set_rulers_mode(True))
         
-        self.btn_rulers_off = QPushButton("📏 Off")
-        self.btn_rulers_off.setFixedSize(50, 25)
-        self.btn_rulers_off.setToolTip("Turn off rulers")
+        self.btn_rulers_off = QPushButton("📏 Выкл")
+        self.btn_rulers_off.setFixedSize(65, 25)
+        self.btn_rulers_off.setToolTip("Выключить линейки")
         self.btn_rulers_off.clicked.connect(lambda: self.set_rulers_mode(False))
         
         bottom_bar.addWidget(self.btn_rulers_on)
@@ -666,83 +1185,137 @@ class BaseImposingModule(QMainWindow):
         
         bottom_bar.addSpacing(10)
         
-        bottom_bar.addWidget(QLabel("Scale:"))
-        
-        self.zoom_slider = QSlider(Qt.Orientation.Horizontal)
-        self.zoom_slider.setRange(10, 300)
-        self.zoom_slider.setValue(100)
-        self.zoom_slider.sliderReleased.connect(self.on_zoom_changed)
-        bottom_bar.addWidget(self.zoom_slider)
+        bottom_bar.addSpacing(15)  # расстояние между масштабом и "Размер"
 
-        # Here is the information now (moved from the top panel)
-        self.info_label = QLabel("Size: 0x0 mm | Sheets: 0")
+        # Здесь теперь находится информация (перенесена с верхней панели)
+        self.info_label = QLabel("Размер: 0x0 мм | Листов: 0")
         bottom_bar.addWidget(self.info_label)
 
-        bottom_bar.addWidget(QLabel("p:"))
+        # Вертикальный разделитель
+        separator = QFrame()
+        separator.setFrameShape(QFrame.Shape.VLine)
+        separator.setFrameShadow(QFrame.Shadow.Sunken)
+        separator.setFixedHeight(22)
+
+        bottom_bar.addSpacing(10)
+        bottom_bar.addWidget(separator)
+        bottom_bar.addSpacing(10)
+
+        # Номер страницы
+        bottom_bar.addWidget(QLabel("Стр:"))
         self.page_input = QLineEdit("0")
         self.page_input.setFixedWidth(50)
         self.page_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.page_input.setValidator(QIntValidator(1, 9999))
         self.page_input.returnPressed.connect(self.go_to_page)
         bottom_bar.addWidget(self.page_input)
-        self.page_input.returnPressed.connect(self.go_to_page)
-        bottom_bar.addWidget(self.page_input)
         
-        # INSERT CREATE HEART BUTTON HERE (line ~472)
+        # ВСТАВИТЬ СОЗДАНИЕ КНОПКИ СЕРДЕЧКА ЗДЕСЬ (строка ~472)
         self.btn_heart = QPushButton("❤")
         self.btn_heart.setFixedSize(30, 25)
         self.btn_heart.setStyleSheet("background-color: #e0e0e0; color: red; font-weight: bold; border-radius: 4px; border: 1px solid #aaa;")
-        self.btn_heart.setToolTip("License Agreement")
+        self.btn_heart.setToolTip("Лицензионное соглашение")
         self.btn_heart.clicked.connect(self.show_license)
         bottom_bar.addWidget(self.btn_heart)
-        
-        
-        # Initializing mode buttons
-        self.btn_height = QPushButton("By height")
-        self.btn_height.clicked.connect(lambda: self.fit_to_height(self.btn_height))
-        
-        self.btn_width = QPushButton("Width")
-        self.btn_width.clicked.connect(lambda: self.fit_to_width(40, self.btn_width))
-        
-        self.btn_one = QPushButton("1 sheet")
-        self.btn_one.clicked.connect(lambda: self.set_mode(1, 'height', self.btn_one))
-        
-        self.btn_two = QPushButton("2 sheet")
-        self.btn_two.clicked.connect(lambda: self.set_mode(2, 'height', self.btn_two))
-        
-        self.btn_three = QPushButton("3 sheet")
-        self.btn_three.clicked.connect(lambda: self.set_mode(3, 'width', self.btn_three))
 
-        self.btn_seven = QPushButton("7 sheets")
-        self.btn_seven.clicked.connect(lambda: self.set_mode(7, 'width', self.btn_seven, 150))
+        # ==========================================================
+        # МАСШТАБ ЛИСТА
+        # ==========================================================
+
+        self.page_zoom = PageZoom(self)
+
+        bottom_bar.addWidget(
+            self.page_zoom
+)
         
-        self.mode_buttons = [self.btn_height, self.btn_width, self.btn_one, self.btn_two, self.btn_three, self.btn_seven]
-        
-        # Set the basic style for the buttons on the bottom panel
-        inactive_style = "background-color: #e0e0e0; color: black; font-weight: bold; border-radius: 4px; padding: 4px 8px;"
+        # ==========================================================
+        # КНОПКИ РЕЖИМА ОТОБРАЖЕНИЯ
+        # ==========================================================
+
+        # По высоте
+        self.btn_height = QPushButton("По высоте")
+        self.btn_height.clicked.connect(
+            lambda: self.fit_to_height(self.btn_height)
+        )
+
+        # 1 лист
+        self.btn_one = QPushButton("1 лист")
+        self.btn_one.clicked.connect(
+            lambda: self.set_page_count(1, self.btn_one)
+        )
+
+        # 2 листа
+        self.btn_two = QPushButton("2 листа")
+        self.btn_two.clicked.connect(
+            lambda: self.set_page_count(2, self.btn_two)
+        )
+
+        # 3 листа
+        self.btn_three = QPushButton("3 листа")
+        self.btn_three.clicked.connect(
+            lambda: self.set_page_count(3, self.btn_three)
+        )
+
+        # 5 листов
+        self.btn_five = QPushButton("5 листов")
+        self.btn_five.clicked.connect(
+            lambda: self.set_page_count(5, self.btn_five)
+        )
+
+        # 7 листов
+        self.btn_seven = QPushButton("7 листов")
+        self.btn_seven.clicked.connect(
+            lambda: self.set_page_count(7, self.btn_seven)
+        )
+
+        # Все кнопки режима
+        self.mode_buttons = [
+            self.btn_height,
+            self.btn_one,
+            self.btn_two,
+            self.btn_three,
+            self.btn_five,
+            self.btn_seven
+        ]
+
+        # Базовый стиль
+        inactive_style = (
+            "background-color: #e0e0e0;"
+            "color: black;"
+            "font-weight: bold;"
+            "border-radius: 4px;"
+            "padding: 4px 8px;"
+        )
+
         for btn in self.mode_buttons:
             btn.setStyleSheet(inactive_style)
             bottom_bar.addWidget(btn)
+
         
         layout.addLayout(bottom_bar)
         
-        # Setting the default scrolling mode
+        # Устанавливаем дефолтный режим прокрутки
         self.scroll_mode = 'continuous'
         self.set_scroll_mode('continuous')
         
-        # Set the default ruler mode
+        # Устанавливаем дефолтный режим линеек
         self.set_rulers_mode(True)
-# INSERT METHOD SHOW_LICENSE HERE (line ~526)
+
+        # --- Drag & Drop PDF файлов ---
+        self.setAcceptDrops(True)
+
+# ВСТАВИТЬ МЕТОД SHOW_LICENSE ЗДЕСЬ (строка ~526)
     def show_license(self):
         dialog = LicenseViewer(self)
         dialog.exec()
-
+        
+        
     def toggle_image_select_mode(self):
-        """Enable/turning off photo selection mode"""
+        """Включение/выключение режима выбора фото"""
 
-        # If PDF not yet open
+        # Если PDF еще не открыт
         if self.doc is None:
-            QMessageBox.warning(self, "Attention", "Open first PDF file.")
+            QMessageBox.warning(self, "Внимание", "Сначала откройте PDF файл.")
             self.btn_select_image.setChecked(False)
             self.is_image_select_mode = False
             return
@@ -750,12 +1323,12 @@ class BaseImposingModule(QMainWindow):
         self.is_image_select_mode = self.btn_select_image.isChecked()
 
         if self.is_image_select_mode:
-            # Let's make the active state dark gray so that it stands out when pressed.
+            # Сделаем активное состояние темно-серым, чтобы выделялось при нажатии
             self.btn_select_image.setStyleSheet(
                 "background-color: #888888; color: white; font-weight: bold; border: 2px solid black; border-radius: 6px; padding: 3px 8px;"
             )
         else:
-            # Returning the standard group color 5 (light gray)
+            # Возвращаем стандартный цвет группы 5 (светло-серый)
             self.btn_select_image.setStyleSheet(
                 "background-color: #e0e0e0; color: black; font-weight: bold; border-radius: 6px; padding: 5px 10px;"
             )
@@ -764,8 +1337,8 @@ class BaseImposingModule(QMainWindow):
 
     def get_ghostscript_path_local(self):
         """
-        Searches for an executable file Ghostscript.
-        Taking into account the new folder structure resources/ghostscript...
+        Ищет исполняемый файл Ghostscript.
+        Учитываем новую структуру с папкой resources/ghostscript...
         """
         if getattr(sys, 'frozen', False):
             base_dir = os.path.dirname(sys.executable)
@@ -774,10 +1347,10 @@ class BaseImposingModule(QMainWindow):
             
         candidates = []
         
-        # New folder structure resources
+        # Новая структура с папкой resources
         gs_root = os.path.join(base_dir, "resources", "ghostscript")
         
-        # 1. If inside resources/ghostscript/ there is a folder with the version (For example, gs10.07.1)
+        # 1. Если внутри resources/ghostscript/ есть папка с версией (например, gs10.07.1)
         if os.path.exists(gs_root) and os.path.isdir(gs_root):
             for item in os.listdir(gs_root):
                 sub_dir = os.path.join(gs_root, item)
@@ -785,7 +1358,7 @@ class BaseImposingModule(QMainWindow):
                     candidates.append(os.path.join(sub_dir, "bin", "gswin64c.exe"))
                     candidates.append(os.path.join(sub_dir, "bin", "gswin32c.exe"))
 
-        # 2. If bin lies right inside resources/ghostscript/
+        # 2. Если bin лежит прямо внутри resources/ghostscript/
         candidates.append(os.path.join(gs_root, "bin", "gswin64c.exe"))
         candidates.append(os.path.join(gs_root, "bin", "gswin32c.exe"))
 
@@ -796,9 +1369,9 @@ class BaseImposingModule(QMainWindow):
         return None
 
     def open_export_module(self):
-        """Opening the export module"""
+        """Открытие модуля экспорта"""
         if not self.doc:
-            QMessageBox.warning(self, "Attention", "Open first PDF file.")
+            QMessageBox.warning(self, "Внимание", "Сначала откройте PDF файл.")
             return
             
         dialog = ExportDialog(self)
@@ -807,9 +1380,9 @@ class BaseImposingModule(QMainWindow):
             self.apply_export(settings)
 
     def apply_export(self, settings):
-        """Logic for exporting pages to JPG or TIFF"""
+        """Логика экспорта страниц в JPG или TIFF"""
         try:
-            out_dir = QFileDialog.getExistingDirectory(self, "Select a folder to save the exported files")
+            out_dir = QFileDialog.getExistingDirectory(self, "Выберите папку для сохранения экспортированных файлов")
             if not out_dir:
                 return
 
@@ -825,14 +1398,14 @@ class BaseImposingModule(QMainWindow):
                 cs = fitz.csRGB
 
             pages_to_process = []
-            if mode == "All pages":
+            if mode == "Все страницы":
                 pages_to_process = range(len(self.doc))
-            elif mode == "Current page":
+            elif mode == "Текущая страница":
                 current_idx = self.active_page_index if self.active_page_index != -1 else 0
                 pages_to_process = [current_idx]
-            elif mode == "Even pages":
+            elif mode == "Четные страницы":
                 pages_to_process = [i for i in range(len(self.doc)) if (i + 1) % 2 == 0]
-            elif mode == "Odd pages":
+            elif mode == "Нечетные страницы":
                 pages_to_process = [i for i in range(len(self.doc)) if (i + 1) % 2 != 0]
 
             for i in pages_to_process:
@@ -841,28 +1414,16 @@ class BaseImposingModule(QMainWindow):
                 out_path = os.path.join(out_dir, f"page_{i+1}.{fmt}")
                 pix.save(out_path)
 
-            QMessageBox.information(self, "Success", f"Successfully exported {len(pages_to_process)} pages in {out_dir}")
+            QMessageBox.information(self, "Успех", f"Успешно экспортировано {len(pages_to_process)} страниц в {out_dir}")
 
         except Exception as e:
             traceback.print_exc()
-            QMessageBox.critical(self, "Error", f"Export failed:\n{e}")
+            QMessageBox.critical(self, "Ошибка", f"Не удалось выполнить экспорт:\n{e}")
 
     def open_background_module(self):
-        """Opening the background customizer"""
+        """Открытие модуля настройки фона"""
         if not self.doc:
-            QMessageBox.warning(self, self.tr("Attention"), self.tr("Open first PDF file."))
-            return
-            
-        dialog = BackgroundDialog(self)
-        if dialog.exec():
-            settings = dialog.get_settings()
-            if settings:
-                self.apply_background(settings)
-
-    def open_background_module(self):
-        """Opening the background customizer"""
-        if not self.doc:
-            QMessageBox.warning(self, self.tr("Attention"), self.tr("Open first PDF file."))
+            QMessageBox.warning(self, "Внимание", "Сначала откройте PDF файл.")
             return
             
         dialog = BackgroundDialog(self)
@@ -872,48 +1433,48 @@ class BaseImposingModule(QMainWindow):
                 self.apply_background(settings)
 
     def apply_background(self, settings):
-        """Adding a background behind page elements"""
+        """Добавление фона позади элементов страницы"""
         try:
-            mode = str(settings['range']).lower() if settings.get('range') else ""
+            mode = settings['range']
             bg_type = settings['bg_type']
 
             new_doc = fitz.open()
 
-            # If the background is from PDF, let's open it once
+            # Если фон из PDF, откроем его один раз
             bg_doc = None
             if bg_type == 'pdf':
                 bg_doc = fitz.open(settings['file_path'])
 
             for i in range(len(self.doc)):
                 apply = False
-                if mode in ("all", "all pages", "все страницы"):
+                if mode == "Все страницы":
                     apply = True
-                elif mode in ("current", "current page", "текущая страница") and i == self.active_page_index:
+                elif mode == "Текущая страница" and i == self.active_page_index:
                     apply = True
-                elif mode in ("even", "even pages", "четные страницы", "чётные страницы") and (i + 1) % 2 == 0:
+                elif mode == "Четные страницы" and (i + 1) % 2 == 0:
                     apply = True
-                elif mode in ("odd", "odd pages", "нечетные страницы", "нечётные страницы") and (i + 1) % 2 != 0:
+                elif mode == "Нечетные страницы" and (i + 1) % 2 != 0:
                     apply = True
 
                 old_page = self.doc.load_page(i)
                 page_rect = old_page.rect
 
-                # Create a new page of the same size
+                # Создаем новую страницу такого же размера
                 new_page = new_doc.new_page(width=page_rect.width, height=page_rect.height)
 
                 if apply:
-                    # First we draw the background (it will be behind all the elements)
+                    # Сначала рисуем фон (он будет позади всех элементов)
                     if bg_type == 'color':
-                        # Fill the sheet with color without a stroke
+                        # Заливаем лист цветом без обводки
                         new_page.draw_rect(new_page.rect, color=None, fill=settings['color_value'])
                     elif bg_type == 'jpg':
-                        # We insert JPG with stretch (keep_proportion=False)
+                        # Вставляем JPG с растягиванием (keep_proportion=False)
                         new_page.insert_image(new_page.rect, filename=settings['file_path'], keep_proportion=False)
                     elif bg_type == 'pdf' and bg_doc and len(bg_doc) > 0:
-                        # We insert PDF with stretch
+                        # Вставляем PDF с растягиванием
                         new_page.show_pdf_page(new_page.rect, bg_doc, 0, keep_proportion=False)
 
-                # Then we overlay the contents of the original page
+                # Затем накладываем содержимое оригинальной страницы
                 new_page.show_pdf_page(new_page.rect, self.doc, i)
 
             if bg_doc:
@@ -928,16 +1489,16 @@ class BaseImposingModule(QMainWindow):
             self.render_all()
             self.history_manager.save_state()
 
-            QMessageBox.information(self, self.tr("Success"), self.tr("Background successfully applied."))
+            QMessageBox.information(self, "Успех", "Фон успешно применен.")
 
         except Exception as e:
             traceback.print_exc()
-            QMessageBox.critical(self, self.tr("Error"), f"{self.tr('Failed to apply background')}:\n{e}")
+            QMessageBox.critical(self, "Ошибка", f"Не удалось применить фон:\n{e}")
 
     def open_convertcolor_module(self):
-        """Opening the color conversion module"""
+        """Открытие модуля конвертации цветов"""
         if not self.doc:
-            QMessageBox.warning(self, "Attention", "Open first PDF file.")
+            QMessageBox.warning(self, "Внимание", "Сначала откройте PDF файл.")
             return
             
         dialog = ConvertColorDialog(self)
@@ -946,16 +1507,16 @@ class BaseImposingModule(QMainWindow):
             self.apply_convertcolor(settings)
 
     def apply_convertcolor(self, settings):
-        """Applying color conversion via Ghostscript (corrected version)"""
+        """Применение конвертации цветов через Ghostscript (исправленная версия)"""
         try:
             mode = settings['range']
             target = settings['target']
             profile = settings.get('profile', '')
 
-            # WE TAKE THE WAY TO GHOSTSCRIPT STRICTLY FROM DIALOG SETTINGS (CROSS-PLATFORM)
+            # БЕРЕМ ПУТЬ К GHOSTSCRIPT СТРОГО ИЗ НАСТРОЕК ДИАЛОГА (КРОССПЛАТФОРМЕННО)
             gs_exec = settings.get('gs_path')
 
-            # Fallback option in case the settings are empty
+            # Запасной вариант на случай, если настройки пустые
             if not gs_exec:
                 base_dir = os.path.dirname(os.path.abspath(__file__))
                 bin_dir = os.path.join(base_dir, "resources", "ghostscript", "gs10.07.1", "bin")
@@ -965,7 +1526,7 @@ class BaseImposingModule(QMainWindow):
                     local_gs = os.path.join(bin_dir, "gs")
                     gs_exec = local_gs if os.path.exists(local_gs) else (shutil.which("gs") or "gs")
 
-            # Checking the existence of the file (for absolute paths)
+            # Проверяем существование файла (для абсолютных путей)
             if gs_exec and os.path.isabs(gs_exec) and not os.path.exists(gs_exec):
                 if platform.system() != "Windows":
                     gs_exec = "gs"
@@ -973,8 +1534,8 @@ class BaseImposingModule(QMainWindow):
             if not gs_exec:
                 QMessageBox.critical(
                     self,
-                    "Error",
-                    "Not found Ghostscript!"
+                    "Ошибка",
+                    "Не найден Ghostscript!"
                 )
                 return
 
@@ -983,7 +1544,7 @@ class BaseImposingModule(QMainWindow):
 
             self.doc.save(temp_in)
 
-            # Ghostscript 10.x requires correct model parameters.
+            # Ghostscript 10.x требует корректные параметры моделей.
             if target == "cmyk":
                 color_strategy = "CMYK"
                 process_model = "DeviceCMYK"
@@ -1009,7 +1570,7 @@ class BaseImposingModule(QMainWindow):
                 f"-sOutputFile={temp_out}"
             ]
 
-            # ICC add a profile only if Ghostscript will be able to use it.
+            # ICC профиль добавляем только если Ghostscript сможет его применить.
             if profile and os.path.exists(profile):
                 cmd.append(f"-sDefaultRGBProfile={profile}" if target == "rgb" else
                            f"-sDefaultCMYKProfile={profile}" if target == "cmyk" else
@@ -1025,7 +1586,7 @@ class BaseImposingModule(QMainWindow):
                     stderr=subprocess.PIPE
                 )
             except subprocess.CalledProcessError as err:
-                # If the profile caused an error, repeat without ICC.
+                # Если профиль вызвал ошибку — повторяем без ICC.
                 cmd = [
                     gs_exec,
                     "-dNOPAUSE",
@@ -1052,13 +1613,13 @@ class BaseImposingModule(QMainWindow):
             for i in range(len(self.doc)):
                 apply = False
 
-                if mode == "All pages":
+                if mode == "Все страницы":
                     apply = True
-                elif mode == "Current page" and i == self.active_page_index:
+                elif mode == "Текущая страница" and i == self.active_page_index:
                     apply = True
-                elif mode == "Even pages" and (i + 1) % 2 == 0:
+                elif mode == "Четные страницы" and (i + 1) % 2 == 0:
                     apply = True
-                elif mode == "Odd pages" and (i + 1) % 2 != 0:
+                elif mode == "Нечетные страницы" and (i + 1) % 2 != 0:
                     apply = True
 
                 if apply:
@@ -1084,22 +1645,22 @@ class BaseImposingModule(QMainWindow):
 
             QMessageBox.information(
                 self,
-                "Success",
-                "Color space successfully changed!"
+                "Успех",
+                "Цветовое пространство успешно изменено!"
             )
 
         except Exception as e:
             traceback.print_exc()
             QMessageBox.critical(
                 self,
-                "Error",
-                f"Failed to apply color conversion:\n{e}"
+                "Ошибка",
+                f"Не удалось применить конвертацию цветов:\n{e}"
             )
 
     def open_curves_module(self):
-        """Opening the text to curves translation module"""
+        """Открытие модуля перевода текста в кривые"""
         if not self.doc:
-            QMessageBox.warning(self, "Attention", "Open first PDF file.")
+            QMessageBox.warning(self, "Внимание", "Сначала откройте PDF файл.")
             return
             
         dialog = CurvesDialog(self)
@@ -1108,15 +1669,15 @@ class BaseImposingModule(QMainWindow):
             self.apply_curves(settings)
 
     def apply_curves(self, settings):
-        """Applying text to curves conversion using Ghostscript (sideways)"""
+        """Применение перевода текста в кривые через Ghostscript (постранично)"""
         try:
             mode = settings['range']
             custom_pages_str = settings.get('custom_pages', '')
             
-            # WE TAKE THE WAY TO GHOSTSCRIPT STRICTLY FROM DIALOG SETTINGS (CROSS-PLATFORM)
+            # БЕРЕМ ПУТЬ К GHOSTSCRIPT СТРОГО ИЗ НАСТРОЕК ДИАЛОГА (КРОССПЛАТФОРМЕННО)
             gs_exec = settings.get('gs_path')
 
-            # Fallback option in case the settings are empty
+            # Запасной вариант на случай, если настройки пустые
             if not gs_exec:
                 base_dir = os.path.dirname(os.path.abspath(__file__))
                 bin_dir = os.path.join(base_dir, "resources", "ghostscript", "gs10.07.1", "bin")
@@ -1126,28 +1687,28 @@ class BaseImposingModule(QMainWindow):
                     local_gs = os.path.join(bin_dir, "gs")
                     gs_exec = local_gs if os.path.exists(local_gs) else (shutil.which("gs") or "gs")
 
-            # Checking the existence of the file (for absolute paths)
+            # Проверяем существование файла (для абсолютных путей)
             if gs_exec and os.path.isabs(gs_exec) and not os.path.exists(gs_exec):
                 if platform.system() != "Windows":
                     gs_exec = "gs"
 
             if not gs_exec:
-                QMessageBox.critical(self, "Error", "Not found Ghostscript!")
+                QMessageBox.critical(self, "Ошибка", "Не найден Ghostscript!")
                 return
 
             total_pages = len(self.doc)
             pages_to_process = []
 
-            if mode == "All pages":
+            if mode == "Все страницы":
                 pages_to_process = list(range(total_pages))
-            elif mode == "Current page":
+            elif mode == "Текущая страница":
                 current_idx = self.active_page_index if self.active_page_index != -1 else 0
                 pages_to_process = [current_idx]
-            elif mode == "Even pages":
+            elif mode == "Четные страницы":
                 pages_to_process = [i for i in range(total_pages) if (i + 1) % 2 == 0]
-            elif mode == "Odd pages":
+            elif mode == "Нечетные страницы":
                 pages_to_process = [i for i in range(total_pages) if (i + 1) % 2 != 0]
-            elif mode == "Specified pages":
+            elif mode == "Указанные страницы":
                 try:
                     for part in custom_pages_str.replace(" ", "").split(","):
                         if "-" in part:
@@ -1157,24 +1718,24 @@ class BaseImposingModule(QMainWindow):
                             pages_to_process.append(int(part) - 1)
                     pages_to_process = [p for p in set(pages_to_process) if 0 <= p < total_pages]
                 except ValueError:
-                    QMessageBox.warning(self, "Error", "Incorrect format of the specified pages.")
+                    QMessageBox.warning(self, "Ошибка", "Некорректный формат указанных страниц.")
                     return
 
             if not pages_to_process:
-                QMessageBox.warning(self, "Attention", "No pages to process.")
+                QMessageBox.warning(self, "Внимание", "Нет страниц для обработки.")
                 return
 
             new_doc = fitz.open()
             main_temp_dir = tempfile.mkdtemp(prefix="librepage_curves_")
             system_fonts = None
 
-            # Processing sheets one at a time
+            # Обрабатываем листы по одному
             for i in range(total_pages):
                 if i not in pages_to_process:
                     new_doc.insert_pdf(self.doc, from_page=i, to_page=i)
                     continue
                 
-                # --- VISUALIZATION: "The sheets will run" ---
+                # --- ВИЗУАЛИЗАЦИЯ: "Листы будут бегать" ---
                 self.handle_page_click(i)
                 row = i // self.pages_in_row
                 col = i % self.pages_in_row
@@ -1192,7 +1753,7 @@ class BaseImposingModule(QMainWindow):
                 single_page_doc.save(temp_page_in)
                 single_page_doc.close()
 
-                # IDLE RUN (Dry Run): Looking for missing fonts
+                # ХОЛОСТОЙ ПРОГОН (Dry Run): Ищем отсутствующие шрифты
                 cmd_dry = [
                     gs_exec, "-dNOPAUSE", "-dBATCH", "-dSAFER",
                     "-sDEVICE=nullpage",
@@ -1215,7 +1776,7 @@ class BaseImposingModule(QMainWindow):
                 skip_page = False
                 fontmap_dir = None
                 
-                # IF THE FONT IS NOT IN THE SYSTEM
+                # ЕСЛИ ШРИФТА НЕТ В СИСТЕМЕ
                 if missing_fonts:
                     if system_fonts is None:
                         system_fonts = {}
@@ -1252,7 +1813,7 @@ class BaseImposingModule(QMainWindow):
                     new_doc.insert_pdf(self.doc, from_page=i, to_page=i)
                     continue
 
-                # FINAL PAGE CONVERSION
+                # ФИНАЛЬНАЯ КОНВЕРТАЦИЯ СТРАНИЦЫ
                 cmd_real = [
                     gs_exec, "-dNOPAUSE", "-dBATCH", "-dSAFER",
                     "-sDEVICE=pdfwrite",
@@ -1272,10 +1833,10 @@ class BaseImposingModule(QMainWindow):
                     new_doc.insert_pdf(conv_page_doc, from_page=0, to_page=0)
                     conv_page_doc.close()
                 except Exception as e:
-                    print(f"Error while converting page {i+1}: {e}")
+                    print(f"Ошибка при конвертации страницы {i+1}: {e}")
                     new_doc.insert_pdf(self.doc, from_page=i, to_page=i)
 
-            # --- Completion ---
+            # --- Завершение ---
             if self.doc: self.doc.close()
             self.doc = new_doc
             self.open_docs[self.current_file_path] = self.doc
@@ -1284,22 +1845,22 @@ class BaseImposingModule(QMainWindow):
             self.history_manager.save_state()
 
             shutil.rmtree(main_temp_dir, ignore_errors=True)
-            QMessageBox.information(self, "Success", "Text converted to curves!")
+            QMessageBox.information(self, "Успех", "Текст переведен в кривые!")
 
         except Exception as e:
             traceback.print_exc()
-            QMessageBox.critical(self, "Error", f"Failed to convert text to curves:\n{e}")
+            QMessageBox.critical(self, "Ошибка", f"Не удалось перевести текст в кривые:\n{e}")
 
     def open_imageclone_module(self):
-        """Opening the photo cloning module"""
+        """Открытие модуля клонирования фото"""
         if not self.doc:
-            QMessageBox.warning(self, "Attention", "Open first PDF file.")
+            QMessageBox.warning(self, "Внимание", "Сначала откройте PDF файл.")
             return
             
         page_index = self.active_page_index if self.active_page_index != -1 else 0
         page = self.doc.load_page(page_index)
         
-        # Let's increase it for better highlighting quality in the dialog.
+        # Увеличим для лучшего качества выделения в диалоге
         zoom = 2.0 
         pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom))
         img = QImage(pix.samples, pix.width, pix.height, pix.stride, QImage.Format.Format_RGB888)
@@ -1311,17 +1872,17 @@ class BaseImposingModule(QMainWindow):
             if settings and settings.get('rect_ratio'):
                 self.apply_imageclone(settings['rect_ratio'], page_index)
             else:
-                QMessageBox.warning(self, "Attention", "You have not selected the area for cloning.")
+                QMessageBox.warning(self, "Внимание", "Вы не выделили область для клонирования.")
 
-    # --- ADDED: PHOTO CORRECTION MODULE ---
+    # --- ДОБАВЛЕНО: МОДУЛЬ КОРРЕКЦИЯ ФОТО ---
     def open_photocorrection_module(self):
         if not self.doc:
-            QMessageBox.warning(self, "Attention", "Open first PDF file.")
+            QMessageBox.warning(self, "Внимание", "Сначала откройте PDF файл.")
             return
         
-        # Checking that the photo is selected
+        # Проверка, что фото выбрано
         if not self.image_selection_manager.selected_bbox:
-            QMessageBox.warning(self, "Attention", "First select the photo with the 'Select' tool'.")
+            QMessageBox.warning(self, "Внимание", "Сначала выберите фото инструментом 'Выбрать'.")
             return
 
         dialog = PhotoCorrectionDialog(self)
@@ -1335,14 +1896,14 @@ class BaseImposingModule(QMainWindow):
             bbox = self.image_selection_manager.selected_bbox
             page = self.doc.load_page(page_index)
 
-            # Getting a raster of the selected area
+            # Получаем растр выбранной области
             pix = page.get_pixmap(clip=bbox, dpi=300)
             
-            # Convert to PIL
+            # Конвертируем в PIL
             img_data = pix.tobytes("png")
             img = Image.open(io.BytesIO(img_data)).convert("RGB")
 
-            # Applying the settings
+            # Применяем настройки
             enhancer = ImageEnhance.Brightness(img)
             img = enhancer.enhance(settings['brightness'])
             
@@ -1352,70 +1913,70 @@ class BaseImposingModule(QMainWindow):
             enhancer = ImageEnhance.Color(img)
             img = enhancer.enhance(settings['saturation'])
 
-            # Save to a temporary buffer for pasting
+            # Сохраняем во временный буфер для вставки
             buf = io.BytesIO()
             img.save(buf, format="PNG")
             buf.seek(0)
             
-            # We insert it back into PDF
-            # First we cover the area with white (similar to cloning)
+            # Вставляем назад в PDF
+            # Сначала закрываем область белым (аналогично клонированию)
             page.draw_rect(bbox, color=(1, 1, 1), fill=(1, 1, 1))
             page.insert_image(bbox, stream=buf.getvalue())
             
             self.render_all()
             self.history_manager.save_state()
-            QMessageBox.information(self, "Success", "Correction applied.")
+            QMessageBox.information(self, "Успех", "Коррекция применена.")
             
         except Exception as e:
             traceback.print_exc()
-            QMessageBox.critical(self, "Error", f"Failed to apply correction: {e}")
+            QMessageBox.critical(self, "Ошибка", f"Не удалось применить коррекцию: {e}")
     # ----------------------------------------
 
-    # --- ADDED: MODULE OPEN IN THE EDITOR ---
+    # --- ДОБАВЛЕНО: МОДУЛЬ ОТКРЫТЬ В РЕДАКТОРЕ ---
     def open_edit_photo_module(self):
-        """Opening the selected photo in an external editor"""
+        """Открытие выбранного фото во внешнем редакторе"""
         if not self.doc:
-            QMessageBox.warning(self, "Attention", "Open first PDF file.")
+            QMessageBox.warning(self, "Внимание", "Сначала откройте PDF файл.")
             return
 
         if not self.image_selection_manager.selected_bbox:
-            QMessageBox.warning(self, "Attention", "First select the photo with the 'Select' tool'.")
+            QMessageBox.warning(self, "Внимание", "Сначала выберите фото инструментом 'Выбрать'.")
             return
 
-        # CHANGE: Moved all fetch, run and wait logic to main.py
-        # This ensures that the file is saved as .png (solves the problem with Photoshop)
-        # And pause the code (solves the problem with GIMP/Krita, when no changes appeared)
+        # ИЗМЕНЕНИЕ: Вся логика извлечения, запуска и ожидания перенесена в main.py
+        # Это гарантирует, что файл сохранится как .png (решает проблему с Photoshop)
+        # И ставит код на паузу (решает проблему с GIMP/Krita, когда изменения не появлялись)
 
         page_index = self.image_selection_manager.selected_page_index
         bbox = self.image_selection_manager.selected_bbox
         page = self.doc.load_page(page_index)
 
         try:
-            # Extracting the raster
+            # Извлекаем растр
             pix = page.get_pixmap(clip=bbox, dpi=300)
             img_data = pix.tobytes("png")
 
-            # Save to a temporary file with an explicit extension .png
+            # Сохраняем во временный файл с явным расширением .png
             temp_file_path = os.path.join(tempfile.gettempdir(), "librepage_edit_photo.png")
             with open(temp_file_path, "wb") as f:
                 f.write(img_data)
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to extract photo:\n{e}")
+            QMessageBox.critical(self, "Ошибка", f"Не удалось извлечь фото:\n{e}")
             return
 
-        # We request the path to the editor if it is not already selected
+        # Запрашиваем путь к редактору, если он еще не выбран
         if not self.external_editor_path or not os.path.exists(self.external_editor_path):
             editor_path, _ = QFileDialog.getOpenFileName(
                 self,
-                "Select editing program (Photoshop, GIMP, Krita...)",
+                "Выберите программу для редактирования (Photoshop, GIMP, Krita...)",
                 "",
-                "Executable files (*.exe *.app *.sh *.bat);;All files (*.*)"
+                "Исполняемые файлы (*.exe *.app *.sh *.bat);;Все файлы (*.*)"
             )
             if not editor_path:
                 return
             self.external_editor_path = editor_path
 
-        # Open the editor
+        # Открываем редактор
         try:
             safe_file_path = os.path.normpath(temp_file_path)
             safe_editor_path = os.path.normpath(self.external_editor_path)
@@ -1425,40 +1986,40 @@ class BaseImposingModule(QMainWindow):
             else:
                 subprocess.Popen([safe_editor_path, safe_file_path])
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to start editor:\n{e}")
+            QMessageBox.critical(self, "Ошибка", f"Не удалось запустить редактор:\n{e}")
             return
 
-        # Important! Pausing execution to wait for the user to save the file
+        # Важно! Приостанавливаем выполнение, чтобы дождаться пока пользователь сохранит файл
         msg_box = QMessageBox(self)
         msg_box.setIcon(QMessageBox.Icon.Information)
-        msg_box.setWindowTitle("Waiting for the editor")
-        msg_box.setText("The image is opened in an external editor.\n\n1. Make changes in the editor that opens.\n2. Save the file (Overwrite the current file, do not select 'Save As'').\n3. Return to this program and click 'Apply Changes''.\n\nIf you want to choose a different editor in the future, just restart LibrePage.")
-        btn_apply = msg_box.addButton("Apply changes", QMessageBox.ButtonRole.AcceptRole)
-        btn_cancel = msg_box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+        msg_box.setWindowTitle("Ожидание редактора")
+        msg_box.setText("Изображение открыто во внешнем редакторе.\n\n1. Внесите изменения в открывшемся редакторе.\n2. Сохраните файл (Перезапишите текущий файл, не выбирайте 'Сохранить как').\n3. Вернитесь в эту программу и нажмите 'Применить изменения'.\n\nЕсли хотите выбрать другой редактор в будущем, просто перезапустите LibrePage.")
+        btn_apply = msg_box.addButton("Применить изменения", QMessageBox.ButtonRole.AcceptRole)
+        btn_cancel = msg_box.addButton("Отмена", QMessageBox.ButtonRole.RejectRole)
 
         msg_box.exec()
 
         if msg_box.clickedButton() == btn_apply:
             try:
-                # Refresh the page. Paste over the white rectangle
+                # Обновляем страницу. Вставляем поверх белого прямоугольника
                 page.draw_rect(bbox, color=(1, 1, 1), fill=(1, 1, 1))
                 page.insert_image(bbox, filename=temp_file_path)
 
                 self.render_all()
                 self.history_manager.save_state()
-                QMessageBox.information(self, "Success", "Image updated successfully!")
+                QMessageBox.information(self, "Успех", "Изображение успешно обновлено!")
             except Exception as e:
                 traceback.print_exc()
-                QMessageBox.critical(self, "Error", f"Failed to apply changes:\n{e}")
+                QMessageBox.critical(self, "Ошибка", f"Не удалось применить изменения:\n{e}")
     # ----------------------------------------
 
     def apply_imageclone(self, rect_ratio, page_index):
-        """Cloning logic: obtaining an area raster, white background on 0.5 mm more, raster insertion"""
+        """Логика клонирования: получение растра области, белая подложка на 0.5 мм больше, вставка растра"""
         try:
             rx, ry, rw, rh = rect_ratio
             page = self.doc.load_page(page_index)
             
-            # We get the coordinates of the current page in PDF
+            # Получаем координаты текущей страницы в PDF
             pw = page.rect.width
             ph = page.rect.height
             
@@ -1469,67 +2030,66 @@ class BaseImposingModule(QMainWindow):
             
             target_rect = fitz.Rect(x0, y0, x1, y1)
             
-            # We obtain a raster of the cloned area with good resolution (300 dpi)
+            # Получаем растр клонируемой области с хорошим разрешением (300 dpi)
             clip_pix = page.get_pixmap(clip=target_rect, dpi=300)
             
-            # We are counting 0.5 mm in points to expand the white rectangle
+            # Рассчитываем 0.5 мм в пунктах для расширения белого прямоугольника
             mm_to_pts = 72 / 25.4
             offset = 0.5 * mm_to_pts
             
             white_rect = fitz.Rect(x0 - offset, y0 - offset, x1 + offset, y1 + offset)
             
-            # Overlay a white rectangle to hide the old photo and background
+            # Накладываем белый прямоугольник для скрытия старого фото и фона
             page.draw_rect(white_rect, color=(1, 1, 1), fill=(1, 1, 1))
             
-            # Insert the cloned image on top of the white rectangle at the same coordinates
+            # Вставляем склонированное изображение поверх белого прямоугольника на те же координаты
             page.insert_image(target_rect, pixmap=clip_pix)
             
             self.render_all()
             self.history_manager.save_state()
             
-            QMessageBox.information(self, "Success", "Photo cloned successfully!")
+            QMessageBox.information(self, "Успех", "Фото успешно клонировано!")
             
         except Exception as e:
             traceback.print_exc()
-            QMessageBox.critical(self, "Error", f"Failed to clone photo:\n{e}")
+            QMessageBox.critical(self, "Ошибка", f"Не удалось клонировать фото:\n{e}")
 
     def open_scale_module(self):
-        """Opening the page content resizer module"""
+        """Открытие модуля изменения масштаба содержимого страниц"""
         if not self.doc:
-            QMessageBox.warning(self, "Attention", "Open first PDF file.")
+            QMessageBox.warning(self, "Внимание", "Сначала откройте PDF файл.")
             return
-
+            
         dialog = ScalePageDialog(self)
         if dialog.exec():
             settings = dialog.get_settings()
             self.apply_scale(settings)
 
     def apply_scale(self, settings):
-        """Page Content Scaling: Stretch Axis Independently"""
+        """Масштабирование содержимого страниц: растяжение по осям независимо"""
         try:
-            # Converting percentages to coefficients
+            # Преобразуем проценты в коэффициенты
             gen = settings['general'] / 100.0
             h_sc = settings['horiz'] / 100.0
             v_sc = settings['vert'] / 100.0
 
-            # Resulting scaling factors for each axis
+            # Итоговые коэффициенты масштабирования для каждой оси
             scale_x = gen * h_sc
             scale_y = gen * v_sc
 
-            mode = settings.get('mode', '').strip()
-            mode_lower = mode.lower()
+            mode = settings['mode']
 
             new_doc = fitz.open()
 
             for i in range(len(self.doc)):
                 apply = False
-                if mode_lower in ["all pages", "все страницы"]:
+                if mode == "Все страницы":
                     apply = True
-                elif mode_lower in ["current page", "текущая страница"] and i == self.active_page_index:
+                elif mode == "Текущая страница" and i == self.active_page_index:
                     apply = True
-                elif mode_lower in ["even pages", "четные страницы"] and (i + 1) % 2 == 0:
+                elif mode == "Четные страницы" and (i + 1) % 2 == 0:
                     apply = True
-                elif mode_lower in ["odd pages", "нечетные страницы"] and (i + 1) % 2 != 0:
+                elif mode == "Нечетные страницы" and (i + 1) % 2 != 0:
                     apply = True
 
                 old_page = self.doc.load_page(i)
@@ -1541,11 +2101,11 @@ class BaseImposingModule(QMainWindow):
                 )
 
                 if apply:
-                    # We calculate content sizes independently for each axis
+                    # Рассчитываем размеры контента независимо для каждой оси
                     content_w = page_rect.width * scale_x
                     content_h = page_rect.height * scale_y
 
-                    # Center the content: 
+                    # Центрируем контент: 
                     x = (page_rect.width - content_w) / 2
                     y = (page_rect.height - content_h) / 2
 
@@ -1556,8 +2116,8 @@ class BaseImposingModule(QMainWindow):
                         y + content_h
                     )
 
-                    # show_pdf_page with parameter keep_proportion=False allows
-                    # stretch the content strictly into a given rectangle target_rect
+                    # show_pdf_page с параметром keep_proportion=False позволяет
+                    # растянуть контент строго в заданный прямоугольник target_rect
                     new_page.show_pdf_page(
                         target_rect,
                         self.doc,
@@ -1565,7 +2125,7 @@ class BaseImposingModule(QMainWindow):
                         keep_proportion=False 
                     )
                 else:
-                    # Normal copying without changes
+                    # Обычное копирование без изменений
                     new_page.show_pdf_page(
                         page_rect,
                         self.doc,
@@ -1583,22 +2143,461 @@ class BaseImposingModule(QMainWindow):
 
             QMessageBox.information(
                 self,
-                "Success",
-                "Content scale changed (axial stretch)."
+                "Успех",
+                "Масштаб содержимого изменён (растяжение по осям)."
             )
 
         except Exception as e:
             traceback.print_exc()
             QMessageBox.critical(
                 self,
-                "Error",
-                f"Failed to scale content:\n{e}"
+                "Ошибка",
+                f"Не удалось масштабировать содержимое:\n{e}"
+            )
+
+    def open_logo_module(self):
+        """Открытие модуля размещения логотипа"""
+
+        if not self.doc:
+            QMessageBox.warning(
+                self,
+                "Внимание",
+                "Сначала откройте PDF файл."
+            )
+            return
+
+        dialog = LogoPageDialog(self)
+
+        if dialog.exec():
+            settings = dialog.get_settings()
+
+            if settings:
+                self.apply_logo(settings)
+
+    def apply_logo(self, settings):
+        """
+        Накладывает логотип на страницы PDF.
+
+        Логотип добавляется непосредственно в PDF,
+        без растрирования всей страницы.
+        """
+
+        try:
+            logo_path = settings["logo_path"]
+            position = settings["position"]
+            margin_x = settings["margin_x"]
+            margin_y = settings["margin_y"]
+            logo_size_mm = settings["logo_size"]
+            rotation = settings["rotation"]
+            opacity = settings["opacity"]
+
+            tile_horizontal = settings["tile_horizontal"]
+            tile_vertical = settings["tile_vertical"]
+
+            mode = settings["range"]
+
+            if not os.path.exists(logo_path):
+                QMessageBox.warning(
+                    self,
+                    "Ошибка",
+                    "Файл логотипа не найден."
+                )
+                return
+
+            # ------------------------------------------------------
+            # Определяем страницы
+            # ------------------------------------------------------
+
+            total_pages = len(self.doc)
+
+            pages_to_process = []
+
+            if mode == "Все страницы":
+                pages_to_process = list(range(total_pages))
+
+            elif mode == "Текущая страница":
+                current_idx = (
+                    self.active_page_index
+                    if self.active_page_index != -1
+                    else 0
+                )
+                pages_to_process = [current_idx]
+
+            elif mode == "Четные страницы":
+                pages_to_process = [
+                    i for i in range(total_pages)
+                    if (i + 1) % 2 == 0
+                ]
+
+            elif mode == "Нечетные страницы":
+                pages_to_process = [
+                    i for i in range(total_pages)
+                    if (i + 1) % 2 != 0
+                ]
+
+            if not pages_to_process:
+                QMessageBox.warning(
+                    self,
+                    "Внимание",
+                    "Нет страниц для обработки."
+                )
+                return
+
+            # ------------------------------------------------------
+            # Подготовка изображения
+            # ------------------------------------------------------
+
+            with Image.open(logo_path) as source_img:
+
+                # Переводим в RGBA для прозрачности
+                source_img = source_img.convert("RGBA")
+
+                original_w, original_h = source_img.size
+
+                if original_w <= 0 or original_h <= 0:
+                    raise ValueError(
+                        "Некорректный размер изображения."
+                    )
+
+                # --------------------------------------------------
+                # Размер логотипа.
+                #
+                # Пользователь задаёт ширину в мм.
+                # Высота рассчитывается автоматически.
+                # --------------------------------------------------
+
+                mm_to_px = 96 / 25.4
+
+                target_w_px = max(
+                    1,
+                    int(logo_size_mm * mm_to_px)
+                )
+
+                ratio = original_h / original_w
+
+                target_h_px = max(
+                    1,
+                    int(target_w_px * ratio)
+                )
+
+                logo_img = source_img.resize(
+                    (target_w_px, target_h_px),
+                    Image.Resampling.LANCZOS
+                )
+
+                # --------------------------------------------------
+                # Прозрачность
+                # --------------------------------------------------
+
+                if opacity < 100:
+
+                    alpha = logo_img.getchannel("A")
+
+                    alpha = alpha.point(
+                        lambda value:
+                        int(value * opacity / 100)
+                    )
+
+                    logo_img.putalpha(alpha)
+
+                # --------------------------------------------------
+                # Поворот
+                # --------------------------------------------------
+
+                if abs(rotation) > 0.01:
+
+                    logo_img = logo_img.rotate(
+                        -rotation,
+                        expand=True,
+                        resample=Image.Resampling.BICUBIC
+                    )
+
+                # --------------------------------------------------
+                # PNG в памяти
+                # --------------------------------------------------
+
+                logo_buffer = io.BytesIO()
+
+                logo_img.save(
+                    logo_buffer,
+                    format="PNG"
+                )
+
+                logo_bytes = logo_buffer.getvalue()
+
+                # Размер логотипа в PDF points
+                # 1 мм = 72 / 25.4 points
+                mm_to_pts = 72 / 25.4
+
+                logo_w_pts = (
+                    logo_size_mm * mm_to_pts
+                )
+
+                # Сохраняем пропорции
+                logo_h_pts = (
+                    logo_w_pts
+                    * logo_img.height
+                    / logo_img.width
+                )
+
+            # ------------------------------------------------------
+            # НОВЫЙ PDF
+            # ------------------------------------------------------
+
+            new_doc = fitz.open()
+
+            for page_index in range(total_pages):
+
+                old_page = self.doc.load_page(page_index)
+
+                page_rect = old_page.rect
+
+                # Создаём страницу того же размера
+                new_page = new_doc.new_page(
+                    width=page_rect.width,
+                    height=page_rect.height
+                )
+
+                # Сначала копируем оригинальную страницу
+                new_page.show_pdf_page(
+                    new_page.rect,
+                    self.doc,
+                    page_index
+                )
+
+                # Если эту страницу обрабатывать не надо —
+                # оставляем её без логотипа.
+                if page_index not in pages_to_process:
+                    continue
+
+                # --------------------------------------------------
+                # ПОЛОЖЕНИЕ
+                # --------------------------------------------------
+
+                if position == "top_left":
+
+                    x = margin_x * mm_to_pts
+                    y = margin_y * mm_to_pts
+
+                    rect = fitz.Rect(
+                        x,
+                        y,
+                        x + logo_w_pts,
+                        y + logo_h_pts
+                    )
+
+                    new_page.insert_image(
+                        rect,
+                        stream=logo_bytes,
+                        keep_proportion=False,
+                        overlay=True
+                    )
+
+                elif position == "top_right":
+
+                    x = (
+                        page_rect.width
+                        - margin_x * mm_to_pts
+                        - logo_w_pts
+                    )
+
+                    y = margin_y * mm_to_pts
+
+                    rect = fitz.Rect(
+                        x,
+                        y,
+                        x + logo_w_pts,
+                        y + logo_h_pts
+                    )
+
+                    new_page.insert_image(
+                        rect,
+                        stream=logo_bytes,
+                        keep_proportion=False,
+                        overlay=True
+                    )
+
+                elif position == "bottom_left":
+
+                    x = margin_x * mm_to_pts
+
+                    y = (
+                        page_rect.height
+                        - margin_y * mm_to_pts
+                        - logo_h_pts
+                    )
+
+                    rect = fitz.Rect(
+                        x,
+                        y,
+                        x + logo_w_pts,
+                        y + logo_h_pts
+                    )
+
+                    new_page.insert_image(
+                        rect,
+                        stream=logo_bytes,
+                        keep_proportion=False,
+                        overlay=True
+                    )
+
+                elif position == "bottom_right":
+
+                    x = (
+                        page_rect.width
+                        - margin_x * mm_to_pts
+                        - logo_w_pts
+                    )
+
+                    y = (
+                        page_rect.height
+                        - margin_y * mm_to_pts
+                        - logo_h_pts
+                    )
+
+                    rect = fitz.Rect(
+                        x,
+                        y,
+                        x + logo_w_pts,
+                        y + logo_h_pts
+                    )
+
+                    new_page.insert_image(
+                        rect,
+                        stream=logo_bytes,
+                        keep_proportion=False,
+                        overlay=True
+                    )
+
+                elif position == "center":
+
+                    x = (
+                        page_rect.width
+                        - logo_w_pts
+                    ) / 2
+
+                    y = (
+                        page_rect.height
+                        - logo_h_pts
+                    ) / 2
+
+                    rect = fitz.Rect(
+                        x,
+                        y,
+                        x + logo_w_pts,
+                        y + logo_h_pts
+                    )
+
+                    new_page.insert_image(
+                        rect,
+                        stream=logo_bytes,
+                        keep_proportion=False,
+                        overlay=True
+                    )
+
+                elif position == "tile":
+
+                    # ------------------------------------------------
+                    # ЗАМОЩЕНИЕ
+                    #
+                    # Логотипы располагаются сеткой.
+                    # Сетка центрируется относительно страницы.
+                    #
+                    # Если логотипы выходят за границу страницы,
+                    # PDF автоматически обрежет их по краю листа.
+                    # ------------------------------------------------
+
+                    total_w = (
+                        tile_horizontal * logo_w_pts
+                    )
+
+                    total_h = (
+                        tile_vertical * logo_h_pts
+                    )
+
+                    start_x = (
+                        page_rect.width - total_w
+                    ) / 2
+
+                    start_y = (
+                        page_rect.height - total_h
+                    ) / 2
+
+                    for row in range(tile_vertical):
+
+                        y = (
+                            start_y
+                            + row * logo_h_pts
+                        )
+
+                        for col in range(tile_horizontal):
+
+                            x = (
+                                start_x
+                                + col * logo_w_pts
+                            )
+
+                            rect = fitz.Rect(
+                                x,
+                                y,
+                                x + logo_w_pts,
+                                y + logo_h_pts
+                            )
+
+                            new_page.insert_image(
+                                rect,
+                                stream=logo_bytes,
+                                keep_proportion=False,
+                                overlay=True
+                            )
+
+            # ------------------------------------------------------
+            # Заменяем текущий документ
+            # ------------------------------------------------------
+
+            old_doc = self.doc
+
+            self.doc = new_doc
+
+            self.open_docs[
+                self.current_file_path
+            ] = self.doc
+
+            try:
+                old_doc.close()
+            except Exception:
+                pass
+
+            # ------------------------------------------------------
+            # Обновляем интерфейс
+            # ------------------------------------------------------
+
+            self.render_all()
+
+            # Сохраняем состояние для Undo
+            self.history_manager.save_state()
+
+            QMessageBox.information(
+                self,
+                "Успех",
+                "Логотип успешно помещён на страницы."
+            )
+
+        except Exception as e:
+
+            import traceback
+            traceback.print_exc()
+
+            QMessageBox.critical(
+                self,
+                "Ошибка",
+                f"Не удалось поместить логотип:\n\n{e}"
             )
 
     def open_spusk_module(self):
-        """Opening the Imposition module"""
+        """Открытие модуля Спуска полос"""
         if not self.doc:
-            QMessageBox.warning(self, "Attention", "Open first PDF file.")
+            QMessageBox.warning(self, "Внимание", "Сначала откройте PDF файл.")
             return
 
         dialog = SpuskDialog(self)
@@ -1608,7 +2607,7 @@ class BaseImposingModule(QMainWindow):
                 self.apply_spusk(settings)
 
     def apply_spusk(self, settings):
-        """Formula processing logic (shuffle) And N-up placement"""
+        """Логика обработки формулы (shuffle) и N-up размещения"""
         try:
             mm_to_pts = 72 / 25.4
             target_w_pts = settings['target_w'] * mm_to_pts
@@ -1619,10 +2618,10 @@ class BaseImposingModule(QMainWindow):
             formula = settings['formula']
 
             if cols <= 0 or rows <= 0 or group_size <= 0:
-                QMessageBox.warning(self, "Error", "Descent parameters must be greater than zero.")
+                QMessageBox.warning(self, "Ошибка", "Параметры спуска должны быть больше нуля.")
                 return
 
-            # Stage 1: Parsing shuffle formula
+            # Этап 1: Парсинг формулы перетасовки
             formula_parts = formula.split()
             placement_list = []
 
@@ -1642,7 +2641,7 @@ class BaseImposingModule(QMainWindow):
                             rot = 90
                             token_num = token[:-1]
                         elif token.endswith('\\'):
-                            rot = 270  # turn counterclockwise 90
+                            rot = 270  # поворот против часовой на 90
                             token_num = token[:-1]
                         else:
                             token_num = token
@@ -1659,7 +2658,7 @@ class BaseImposingModule(QMainWindow):
                         'rot': rot
                     })
 
-            # Stage 2: Accommodation N-up on the new list
+            # Этап 2: Размещение N-up на новом листе
             new_doc = fitz.open()
             pages_per_sheet = cols * rows
             cell_w = target_w_pts / cols
@@ -1681,11 +2680,11 @@ class BaseImposingModule(QMainWindow):
                         y0 = r * cell_h
                         rect = fitz.Rect(x0, y0, x0 + cell_w, y0 + cell_h)
                         
-                        # Method show_pdf_page supports rotation, 
-                        # proportions (keep_proportion=True) are applied automatically
+                        # Метод show_pdf_page поддерживает поворот, 
+                        # пропорции (keep_proportion=True) применяются автоматически
                         new_page.show_pdf_page(rect, self.doc, src_idx, rotate=item['rot'])
 
-            # Replace the old document with a new one
+            # Заменяем старый документ на новый
             if self.doc: self.doc.close()
             self.doc = new_doc
             self.open_docs[self.current_file_path] = self.doc
@@ -1695,81 +2694,212 @@ class BaseImposingModule(QMainWindow):
 
         except Exception as e:
             traceback.print_exc()
-            QMessageBox.critical(self, "Error", f"Imposition failed:\n{e}")
+            QMessageBox.critical(self, "Ошибка", f"Не удалось выполнить спуск полос:\n{e}")
+            
+    def update_crop_preview(
+        self,
+        top,
+        bottom,
+        left,
+        right,
+        mode
+    ):
+        """
+        Обновляет линии предварительного кадрирования.
+        """
+
+        # Если пришёл сигнал очистки
+        if top < 0:
+            self.clear_crop_preview()
+            return
+
+        if not self.page_widgets:
+            return
+
+        # ------------------------------------------
+        # Какую страницу показываем
+        # ------------------------------------------
+
+        page_index = self.active_page_index
+
+        if page_index < 0:
+            page_index = 0
+
+        # ------------------------------------------
+        # Получаем активный PageWidget
+        # ------------------------------------------
+
+        page_widget = self.page_widgets[page_index]
+
+        if not hasattr(page_widget, "crop_overlay"):
+            return
+
+        # ------------------------------------------
+        # Пока показываем линии только
+        # на активной странице
+        # ------------------------------------------
+
+        # Все остальные overlay скрываем
+        for widget in self.page_widgets:
+
+            if hasattr(widget, "crop_overlay"):
+
+                if widget is page_widget:
+
+                    widget.crop_overlay.set_crop_values(
+                        top,
+                        bottom,
+                        left,
+                        right
+                    )
+
+                    widget.crop_overlay.setGeometry(
+                        widget.image_label.rect()
+                    )
+
+                    widget.crop_overlay.raise_()
+
+                else:
+
+                    widget.crop_overlay.hide()
+                    
+    def clear_crop_preview(self):
+        """
+        Убирает все линии предварительного кадрирования.
+        """
+
+        for widget in self.page_widgets:
+
+            if hasattr(widget, "crop_overlay"):
+
+                widget.crop_overlay.clear()
 
     def open_crop_module(self):
-        """Opening the crop module"""
+        """Открытие модуля кадрирования"""
+
         if not self.doc:
-            QMessageBox.warning(self, "Attention", "Open first PDF file.")
+            QMessageBox.warning(
+                self,
+                "Внимание",
+                "Сначала откройте PDF файл."
+            )
             return
-    
+
+        # ------------------------------------------
+        # Находим активную страницу
+        # ------------------------------------------
+
+        page_index = self.active_page_index
+
+        if page_index < 0:
+            page_index = 0
+
+        if page_index >= len(self.page_widgets):
+            return
+
+        page_widget = self.page_widgets[page_index]
+
+        # ------------------------------------------
+        # Открываем окно кадрирования
+        # ------------------------------------------
+
+        dialog = CropPageDialog(self)
+
+        # ------------------------------------------
+        # При каждом изменении значения
+        # сразу показываем линии
+        # ------------------------------------------
+
+        dialog.preview_changed.connect(
+            lambda top, bottom, left, right, mode:
+                self.update_crop_preview(
+                    top,
+                    bottom,
+                    left,
+                    right,
+                    mode
+                )
+        )
+
+        # ------------------------------------------
+        # Открываем окно
+        # ------------------------------------------
+
+        result = dialog.exec()
+
+        # ------------------------------------------
+        # На всякий случай убираем линии
+        # после закрытия окна
+        # ------------------------------------------
+
+        self.clear_crop_preview()
+
+        # ------------------------------------------
+        # Если нажали ПРИМЕНИТЬ
+        # ------------------------------------------
+
+        if result:
+
+            settings = dialog.get_settings()
+
+            self.apply_crop(settings)
+
+
+    def open_pdftransfer_module(self):
+        """Открывает окно «Обмен страницами» для копирования страниц из внешнего PDF."""
+
+        if not self.doc:
+            QMessageBox.warning(
+                self,
+                "Внимание",
+                "Сначала откройте PDF файл."
+            )
+            return
+
+        file_name, _ = QFileDialog.getOpenFileName(
+            self,
+            "Выберите PDF для обмена страницами",
+            "",
+            "PDF Files (*.pdf)"
+        )
+
+        if not file_name:
+            return
+
         try:
-            dialog = CropPageDialog(self)
-            if dialog.exec() == QDialog.DialogCode.Accepted:
-                data = dialog.get_settings()
-                mode = data['mode']
-            
-            # Конвертация миллиметров в пункты (1 мм = 72 / 25.4 pt)
-            mm_to_pt = 72.0 / 25.4
-            top_pt = data['top'] * mm_to_pt
-            bottom_pt = data['bottom'] * mm_to_pt
-            left_pt = data['left'] * mm_to_pt
-            right_pt = data['right'] * mm_to_pt
-            
-            total_pages = len(self.doc)
-            target_pages = []
-            
-            # Определение номеров страниц для обработки
-            if mode in ["All Pages", "Все страницы"]:
-                target_pages = list(range(total_pages))
-            elif mode in ["Even Pages", "Четные страницы"]:
-                target_pages = [i for i in range(total_pages) if (i + 1) % 2 == 0]
-            elif mode in ["Odd Pages", "Нечетные страницы"]:
-                target_pages = [i for i in range(total_pages) if (i + 1) % 2 != 0]
-            elif mode in ["Current Page", "Текущая страница"]:
-                current_idx = getattr(self, 'current_page', 0)
-                target_pages = [current_idx]
-            
-            # Применение кадрирования (cropbox) к страницам PyMuPDF
-            for page_num in target_pages:
-                if 0 <= page_num < total_pages:
-                    page = self.doc[page_num]
-                    # Берем mediabox как базовый размер оригинальной страницы
-                    base_rect = page.mediabox
-                    
-                    new_x0 = base_rect.x0 + left_pt
-                    new_y0 = base_rect.y0 + top_pt
-                    new_x1 = base_rect.x1 - right_pt
-                    new_y1 = base_rect.y1 - bottom_pt
-                    
-                    # Проверка валидности полученных прямоугольных координат
-                    if new_x1 > new_x0 and new_y1 > new_y0:
-                        new_cropbox = fitz.Rect(new_x0, new_y0, new_x1, new_y1)
-                        page.set_cropbox(new_cropbox)
-            
-            # Принудительное обновление отображения страниц в UI LibrePage
-            if hasattr(self, 'update_preview'):
-                self.update_preview()
-            elif hasattr(self, 'render_pages'):
-                self.render_pages()
-            elif hasattr(self, 'render_page'):
-                self.render_page()
-            elif hasattr(self, 'show_page'):
-                self.show_page()
-            elif hasattr(self, 'reload_pdf'):
-                self.reload_pdf()
-            elif hasattr(self, 'display_pages'):
-                self.display_pages()
-            else:
-                QMessageBox.information(self, "Info", "Обрезка применена к документу, но метод перерисовки предпросмотра не найден.")
+            dialog = PDFTransferDialog(self, file_name)
+
+            dialog.show()
+            dialog.raise_()
+            dialog.activateWindow()
+
+            # Храним открытые окна, чтобы Python их не удалил
+            if not hasattr(self, "_pdftransfer_dialogs"):
+                self._pdftransfer_dialogs = []
+
+            self._pdftransfer_dialogs.append(dialog)
+
+            def cleanup(_obj=None, dlg=dialog):
+                try:
+                    self._pdftransfer_dialogs.remove(dlg)
+                except (ValueError, AttributeError):
+                    pass
+
+            dialog.destroyed.connect(cleanup)
 
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Ошибка при обрезке: {str(e)}")
+            traceback.print_exc()
+
+            QMessageBox.critical(
+                self,
+                "Ошибка",
+                f"Не удалось открыть PDF в модуле «Обмен страницами»:\n\n{e}"
+            )
             
     def open_fields_module(self):
-        """Opening the add fields module (fields+)"""
+        """Открытие модуля добавления полей (Поля+)"""
         if not self.doc:
-            QMessageBox.warning(self, "Attention", "Open first PDF file.")
+            QMessageBox.warning(self, "Внимание", "Сначала откройте PDF файл.")
             return
         
         dialog = FieldsDialog(self)
@@ -1778,7 +2908,7 @@ class BaseImposingModule(QMainWindow):
             self.apply_fields(settings)
 
     def apply_fields(self, settings):
-        """Logic for adding fields around the page"""
+        """Логика добавления полей вокруг страницы"""
         try:
             mm_to_pts = 72 / 25.4
             top_pts = settings['top'] * mm_to_pts
@@ -1791,28 +2921,28 @@ class BaseImposingModule(QMainWindow):
             
             for i in range(len(self.doc)):
                 should_apply = False
-                if mode == "All pages": should_apply = True
-                elif mode == "Even pages" and (i + 1) % 2 == 0: should_apply = True
-                elif mode == "Odd pages" and (i + 1) % 2 != 0: should_apply = True
-                elif mode == "Current page" and i == self.active_page_index: should_apply = True
+                if mode == "Все страницы": should_apply = True
+                elif mode == "Четные страницы" and (i + 1) % 2 == 0: should_apply = True
+                elif mode == "Нечетные страницы" and (i + 1) % 2 != 0: should_apply = True
+                elif mode == "Текущая страница" and i == self.active_page_index: should_apply = True
                 
                 old_page = self.doc.load_page(i)
                 old_rect = old_page.rect
                 
                 if should_apply:
-                    # New sheet size = old size + required fields
+                    # Размер нового листа = размер старого + нужные поля
                     new_w = old_rect.width + left_pts + right_pts
                     new_h = old_rect.height + top_pts + bottom_pts
                     
                     new_page = new_doc.new_page(width=new_w, height=new_h)
                     
-                    # Rectangle for inserting the old page, offset by the size of the left and top margins
+                    # Прямоугольник для вставки старой страницы, смещенный на размер левого и верхнего полей
                     target_rect = fitz.Rect(left_pts, top_pts, left_pts + old_rect.width, top_pts + old_rect.height)
                     
-                    # Paste the contents of the old page
+                    # Вставляем содержимое старой страницы
                     new_page.show_pdf_page(target_rect, self.doc, i)
                 else:
-                    # Just copy the page without changes
+                    # Просто копируем страницу без изменений
                     new_page = new_doc.new_page(width=old_rect.width, height=old_rect.height)
                     new_page.show_pdf_page(new_page.rect, self.doc, i)
                     
@@ -1822,14 +2952,14 @@ class BaseImposingModule(QMainWindow):
             
             self.render_all()
             self.history_manager.save_state()
-            QMessageBox.information(self, "Success", "Fields added successfully.")
+            QMessageBox.information(self, "Успех", "Поля успешно добавлены.")
             
         except Exception as e:
             traceback.print_exc()
-            QMessageBox.critical(self, "Error", f"Failed to add fields:\n{e}")
+            QMessageBox.critical(self, "Ошибка", f"Не удалось добавить поля:\n{e}")
 
     def apply_crop(self, settings):
-        """Applying cropping to pages"""
+        """Применение кадрирования к страницам"""
         try:
             mm_to_pts = 72 / 25.4
             top_pts = settings['top'] * mm_to_pts
@@ -1841,23 +2971,28 @@ class BaseImposingModule(QMainWindow):
             
             for i in range(len(self.doc)):
                 should_apply = False
-                if mode == "All pages": should_apply = True
-                elif mode == "Even pages" and (i + 1) % 2 == 0: should_apply = True
-                elif mode == "Odd pages" and (i + 1) % 2 != 0: should_apply = True
-                elif mode == "Current page" and i == self.active_page_index: should_apply = True
+                if mode == "Все страницы": should_apply = True
+                elif mode == "Четные страницы" and (i + 1) % 2 == 0: should_apply = True
+                elif mode == "Нечетные страницы" and (i + 1) % 2 != 0: should_apply = True
+                elif mode == "Текущая страница" and i == self.active_page_index: should_apply = True
                 
                 if should_apply:
                     page = self.doc.load_page(i)
                     rect = page.rect
-                    # Reducing the page size (shift the coordinates of the rectangle inward)
-                    new_rect = fitz.Rect(rect.x0 + left_pts, rect.y0 + top_pts, 
-                                           rect.x1 - right_pts, rect.y1 - bottom_pts)
+                    # Уменьшаем размер страницы (сдвигаем координаты прямоугольника внутрь)
+                    # Уменьшаем размер страницы
+                    new_rect = fitz.Rect(
+                        rect.x0 + left_pts,
+                        rect.y0 + bottom_pts,
+                        rect.x1 - right_pts,
+                        rect.y1 - top_pts
+)
                     
                     if new_rect.width > 0 and new_rect.height > 0:
                         page.set_cropbox(new_rect)
                         page.set_mediabox(new_rect)
                     else:
-                        QMessageBox.warning(self, "Error", f"Incorrect values ​​for page cropping {i+1} (cut larger than the sheet itself).")
+                        QMessageBox.warning(self, "Ошибка", f"Некорректные значения для обрезки на странице {i+1} (обрезано больше размера самого листа).")
                         return
             
             self.render_all()
@@ -1865,87 +3000,139 @@ class BaseImposingModule(QMainWindow):
             
         except Exception as e:
             traceback.print_exc()
-            QMessageBox.critical(self, "Error", f"Failed to trim pages:\n{e}")
+            QMessageBox.critical(self, "Ошибка", f"Не удалось обрезать страницы:\n{e}")
 
     def open_size_module(self):
-        """Opening the resize module"""
+        """Открытие модуля изменения размера"""
         if not self.doc:
-            QMessageBox.warning(self, "Attention", "Open first PDF file.")
+            QMessageBox.warning(self, "Внимание", "Сначала откройте PDF файл.")
             return
             
-        dialog = SizePageDialog(self)
+        # Получаем размеры текущей страницы
+        current_page = self.doc[self.active_page_index]
+        cur_w_mm = current_page.rect.width / 2.83465
+        cur_h_mm = current_page.rect.height / 2.83465
+
+        # Вызываем диалог с правильными параметрами
+        dialog = SizePageDialog(self, cur_w_mm, cur_h_mm)
+        
+        # Запускаем диалоговое окно и передаем настройки в apply_resize, если нажали APPLY
         if dialog.exec():
             settings = dialog.get_settings()
+            
+            # Проверяем, включено ли пропорциональное масштабирование (новый параметр из size.py)
+            # Если галочки нет (старое поведение), можно временно переключить логику или передать дальше
             self.apply_resize(settings)
 
     def apply_resize(self, settings):
-        """Scales document pages to a new size"""
+        """Изменяет размер страниц и масштабирует содержимое под новый формат."""
         try:
             mm_to_pts = 72 / 25.4
             new_w = settings['w_mm'] * mm_to_pts
             new_h = settings['h_mm'] * mm_to_pts
-            
+
             new_doc = fitz.open()
-            pages_to_process = range(len(self.doc)) if settings['all'] else [self.active_page_index]
-            
-            for i in range(len(self.doc)):
+
+            pages_to_process = (
+                set(range(len(self.doc)))
+                if settings['all']
+                else {self.active_page_index}
+            )
+
+            # Сохраняем старый документ, пока новый полностью не создан
+            old_doc = self.doc
+
+            for i in range(len(old_doc)):
                 if i in pages_to_process:
-                    old_p = self.doc.load_page(i)
-                    new_p = new_doc.new_page(width=new_w, height=new_h)
-                    
-                    # We scale content through rectangle
-                    new_p.show_pdf_page(new_p.rect, self.doc, i)
+                    old_page = old_doc.load_page(i)
+
+                    # Создаём страницу нового размера
+                    new_page = new_doc.new_page(
+                        width=new_w,
+                        height=new_h
+                    )
+
+                    # ВАЖНО:
+                    # scale=True  -> сохраняем пропорции
+                    # scale=False -> растягиваем содержимое точно на новый лист
+                    keep_proportion = settings.get('scale', True)
+
+                    new_page.show_pdf_page(
+                        new_page.rect,
+                        old_doc,
+                        i,
+                        keep_proportion=keep_proportion
+                    )
+
                 else:
-                    new_doc.insert_pdf(self.doc, from_page=i, to_page=i)
-            
-            if self.doc: self.doc.close()
+                    # Остальные страницы оставляем без изменений
+                    new_doc.insert_pdf(
+                        old_doc,
+                        from_page=i,
+                        to_page=i
+                    )
+
+            # Закрываем старый документ только после полного копирования
+            old_doc.close()
+
             self.doc = new_doc
             self.open_docs[self.current_file_path] = self.doc
+
             self.render_all()
             self.history_manager.save_state()
-            QMessageBox.information(self, "Success", "Pages resized.")
+
+            QMessageBox.information(
+                self,
+                "Успех",
+                "Размер страниц изменен."
+            )
+
         except Exception as e:
             traceback.print_exc()
-            QMessageBox.critical(self, "Error", f"Failed to resize:\n{e}")
+            QMessageBox.critical(
+                self,
+                "Ошибка",
+                f"Не удалось изменить размер:\n{e}"
+            )
 
     def open_print_module(self):
-        """Launching the print module and saving current changes"""
+        """Запуск модуля печати с сохранением текущих изменений"""
         if not self.doc:
-            QMessageBox.warning(self, "Attention", "Open first PDF file.")
+            QMessageBox.warning(self, "Внимание", "Сначала откройте PDF файл.")
             return
         
-        # 1. Save the temporary file to the system folder temp
+        # 1. Сохраняем временный файл в системную папку temp
         temp_dir = tempfile.gettempdir()
         temp_print_path = os.path.join(temp_dir, "temp_print_job.pdf")
         
         try:
             self.doc.save(temp_print_path)
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to prepare file for printing: {e}")
+            QMessageBox.critical(self, "Ошибка", f"Не удалось подготовить файл к печати: {e}")
             return
             
-        # 2. We call printing directly through the imported module
+        # 2. Вызываем печать напрямую через импортированный модуль
         try:
             page_to_print = self.active_page_index if self.active_page_index != -1 else 0
             
-            # Importing the print module
+            # Импортируем модуль печати
             import print as print_module
             
-            # Calling the print function from the module print.py
-            # We pass the path to the temporary PDF and page number (1-based)
+            # Вызываем функцию печати из модуля print.py
+            # Передаем путь к временному PDF и номер страницы (1-based)
             print_module.start_print(temp_print_path, page_to_print + 1)
 
         except Exception as e:
             QMessageBox.critical(
                 self, 
-                "Print Error", 
-                f"Failed to call print module:\n{e}\n\n{traceback.format_exc()}"
+                "Ошибка печати", 
+                f"Не удалось вызывать модуль печати:\n{e}\n\n{traceback.format_exc()}"
             )
 
     def open_multiply_module(self):
-        """Opening the page propagation module"""
+        """Открытие модуля размножения страниц"""
         if not self.doc:
-            QMessageBox.warning(self, "Attention", "Open first PDF file.")
+            QMessageBox.warning(self, "Внимание", "Сначала откройте PDF файл.")
             return
             
         dialog = MultiplyDialog(self)
@@ -1954,7 +3141,7 @@ class BaseImposingModule(QMainWindow):
             self.apply_multiply(settings)
 
     def apply_multiply(self, settings):
-        """Logic for placing copies of original pages on a new canvas"""
+        """Логика размещения копий оригинальных страниц на новом холсте"""
         try:
             mm_to_pts = 72 / 25.4
             target_w_pts = settings['target_width_mm'] * mm_to_pts
@@ -1970,7 +3157,7 @@ class BaseImposingModule(QMainWindow):
             crop_right = settings.get('crop_offset_right_mm', 0) * mm_to_pts
             
             if target_w_pts <= 0 or target_h_pts <= 0:
-                QMessageBox.warning(self, "Error", "The sheet dimensions are set incorrectly.")
+                QMessageBox.warning(self, "Ошибка", "Неверно заданы размеры листа.")
                 return
 
             new_doc = fitz.open()
@@ -1988,7 +3175,7 @@ class BaseImposingModule(QMainWindow):
                 start_x = (target_w_pts - grid_total_w) / 2
                 start_y = (target_h_pts - grid_total_h) / 2
 
-                # --- STAGE 1: We post all pages ---
+                # --- ЭТАП 1: Размещаем все страницы ---
                 for r in range(rows):
                     for c in range(cols):
                         x0 = start_x + c * (orig_w + spacing_pts)
@@ -1996,11 +3183,11 @@ class BaseImposingModule(QMainWindow):
                         rect = fitz.Rect(x0, y0, x0 + orig_w, y0 + orig_h)
                         new_page.show_pdf_page(rect, self.doc, i)
 
-                # --- STAGE 2: Draw all the cut marks ---
+                # --- ЭТАП 2: Рисуем все метки реза ---
                 if crop_marks:
-                    # Set label parameters
+                    # Задаем параметры меток
                     mark_len = 3 * mm_to_pts
-                    gap_pts = 1 * mm_to_pts  # Clearance 1 mm so that it does not reach the corner
+                    gap_pts = 1 * mm_to_pts  # Зазор 1 мм, чтобы не доходило до угла
                     color = (0, 0, 0)
                     line_w = 0.5
 
@@ -2014,8 +3201,8 @@ class BaseImposingModule(QMainWindow):
                             cut_x1 = x0 + orig_w - crop_right
                             cut_y1 = y0 + orig_h - crop_bottom
 
-                            # Upper left corner
-                            # Shift to gap_pts from the corner (cut_x0, cut_y0)
+                            # Верхний левый угол
+                            # Сдвигаем на gap_pts от угла (cut_x0, cut_y0)
                             new_page.draw_line(
                                 fitz.Point(cut_x0 - mark_len - gap_pts, cut_y0),
                                 fitz.Point(cut_x0 - gap_pts, cut_y0),
@@ -2027,7 +3214,7 @@ class BaseImposingModule(QMainWindow):
                                 color=color, width=line_w
                             )
 
-                            # Upper right corner
+                            # Верхний правый угол
                             new_page.draw_line(
                                 fitz.Point(cut_x1 + gap_pts, cut_y0),
                                 fitz.Point(cut_x1 + mark_len + gap_pts, cut_y0),
@@ -2039,7 +3226,7 @@ class BaseImposingModule(QMainWindow):
                                 color=color, width=line_w
                             )
 
-                            # Bottom left corner
+                            # Нижний левый угол
                             new_page.draw_line(
                                 fitz.Point(cut_x0 - mark_len - gap_pts, cut_y1),
                                 fitz.Point(cut_x0 - gap_pts, cut_y1),
@@ -2051,7 +3238,7 @@ class BaseImposingModule(QMainWindow):
                                 color=color, width=line_w
                             )
 
-                            # Bottom right corner
+                            # Нижний правый угол
                             new_page.draw_line(
                                 fitz.Point(cut_x1 + gap_pts, cut_y1),
                                 fitz.Point(cut_x1 + mark_len + gap_pts, cut_y1),
@@ -2072,18 +3259,18 @@ class BaseImposingModule(QMainWindow):
             
         except Exception as e:
             traceback.print_exc()
-            QMessageBox.critical(self, "Error", f"Failed to reproduce pages:\n{e}")
+            QMessageBox.critical(self, "Ошибка", f"Не удалось размножить страницы:\n{e}")
 
     def open_mask_module(self):
-        """Opening the hiding module (rectangle overlay)"""
+        """Открытие модуля скрытия (наложения прямоугольника)"""
         if not self.doc:
-            QMessageBox.warning(self, "Attention", "Open first PDF file.")
+            QMessageBox.warning(self, "Внимание", "Сначала откройте PDF файл.")
             return
             
         page_index = self.active_page_index if self.active_page_index != -1 else 0
         page = self.doc.load_page(page_index)
         
-        zoom = 1.0 # Basic scale for the docker
+        zoom = 1.0 # Базовый масштаб для окна настройки
         pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom))
         img = QImage(pix.samples, pix.width, pix.height, pix.stride, QImage.Format.Format_RGB888)
         pixmap = QPixmap.fromImage(img)
@@ -2094,15 +3281,15 @@ class BaseImposingModule(QMainWindow):
             if settings['rect_ratio']:
                 self.apply_mask(settings)
             else:
-                QMessageBox.warning(self, "Attention", "You have not selected the area to hide.")
+                QMessageBox.warning(self, "Внимание", "Вы не выделили область для скрытия.")
 
     def apply_mask(self, settings):
-        """Applies a white rectangle to selected pages"""
+        """Применяет белый прямоугольник к выбранным страницам"""
         ratio_x, ratio_y, ratio_w, ratio_h = settings['rect_ratio']
         mode = settings['mode']
         
         pages_to_process = []
-        if mode == "Hide on current page":
+        if mode == "Скрыть на текущей странице":
             current_index = self.active_page_index if self.active_page_index != -1 else 0
             pages_to_process = [current_index]
         else:
@@ -2125,9 +3312,9 @@ class BaseImposingModule(QMainWindow):
         self.history_manager.save_state()
 
     def open_move_module(self):
-        """Opening the page shifter"""
+        """Открытие модуля сдвига страниц"""
         if not self.doc:
-            QMessageBox.warning(self, "Attention", "Open first PDF file.")
+            QMessageBox.warning(self, "Внимание", "Сначала откройте PDF файл.")
             return
         
         dialog = MovePageDialog(self)
@@ -2136,63 +3323,115 @@ class BaseImposingModule(QMainWindow):
             self.apply_move(settings)
 
     def apply_move(self, settings):
-        """Applying shift to pages"""
-        mm_to_pts = 72 / 25.4
-        dx = settings['dx'] * mm_to_pts
-        dy = settings['dy'] * mm_to_pts
-        
-        mode = settings['mode']
-        
-        for i in range(len(self.doc)):
-            should_apply = False
-            if mode == "All pages": should_apply = True
-            elif mode == "Even pages" and (i + 1) % 2 == 0: should_apply = True
-            elif mode == "Odd pages" and (i + 1) % 2 != 0: should_apply = True
-            elif mode == "Current page" and i == self.active_page_index: should_apply = True
-            
-            if should_apply:
-                page = self.doc.load_page(i)
-                page.set_mediabox(fitz.Rect(page.rect.x0 - dx, page.rect.y0 - dy, 
-                                            page.rect.x1 - dx, page.rect.y1 - dy))
-        
-        self.render_all()
-        self.history_manager.save_state()
+        """Применение сдвига содержимого страниц без изменения размера страницы"""
+        try:
+            mm_to_pts = 72 / 25.4
+            dx = settings['dx'] * mm_to_pts
+            dy = settings['dy'] * mm_to_pts
+
+            mode = settings['mode']
+
+            # Сохраняем старый документ
+            old_doc = self.doc
+
+            # Создаём новый документ
+            new_doc = fitz.open()
+
+            for i in range(len(old_doc)):
+                should_apply = False
+
+                if mode == "Все страницы":
+                    should_apply = True
+                elif mode == "Четные страницы" and (i + 1) % 2 == 0:
+                    should_apply = True
+                elif mode == "Нечетные страницы" and (i + 1) % 2 != 0:
+                    should_apply = True
+                elif mode == "Текущая страница" and i == self.active_page_index:
+                    should_apply = True
+
+                old_page = old_doc.load_page(i)
+                old_rect = old_page.rect
+
+                # Создаём страницу ТОГО ЖЕ РАЗМЕРА,
+                # который она имеет сейчас.
+                new_page = new_doc.new_page(
+                    width=old_rect.width,
+                    height=old_rect.height
+                )
+
+                if should_apply:
+                    # Сдвигаем содержимое внутри страницы.
+                    target_rect = fitz.Rect(
+                    dx,
+                    -dy,
+                    old_rect.width + dx,
+                    old_rect.height - dy
+                    )
+
+                    new_page.show_pdf_page(
+                        target_rect,
+                        old_doc,
+                        i
+                    )
+                else:
+                    # Страница без сдвига остаётся как была.
+                    new_page.show_pdf_page(
+                        new_page.rect,
+                        old_doc,
+                        i
+                    )
+
+            # Заменяем документ
+            old_doc.close()
+            self.doc = new_doc
+            self.open_docs[self.current_file_path] = self.doc
+
+            self.render_all()
+            self.history_manager.save_state()
+
+        except Exception as e:
+            traceback.print_exc()
+            QMessageBox.critical(
+                self,
+                "Ошибка",
+                f"Не удалось выполнить сдвиг:\n{e}"
+            )
 
     def open_cutpage_module(self):
-        """Opening the cutting module"""
+        """Открытие модуля разрезки"""
         if not self.current_file_path:
-            QMessageBox.warning(self, "Attention", "Open first PDF file.")
+            QMessageBox.warning(self, "Внимание", "Сначала откройте PDF файл.")
             return
         
         dialog = CutPageDialog(self.current_file_path, self)
         dialog.exec()
 
     def open_merge_module(self):
-        """Opening the splicing module"""
+        """Открытие модуля склейки"""
         merged_file_path = merge_pdfs_dialog(self)
         if merged_file_path:
             self.load_document(merged_file_path)
 
     def open_reverse_module(self):
-        """Opening the page reverse module"""
+        """Открытие модуля реверса страниц"""
         reverse_pages_action(self)
 
     def open_cheredov_module(self):
-        """Opening the Interleave Module"""
+        """Открытие модуля чередования"""
         cheredov_pages_action(self)
 
     def open_rotate_module(self):
-        """Opening the page turner module"""
+        """Открытие модуля поворота страниц"""
         if not self.doc:
-            QMessageBox.warning(self, "Attention", "Open first PDF file.")
+            QMessageBox.warning(self, "Внимание", "Сначала откройте PDF файл.")
             return
         dialog = RotatePageDialog(self)
         dialog.exec()
 
     def open_number_module(self):
-        """Opening the pagination module"""
+        """Открытие модуля нумерации страниц"""
         if not self.current_file_path:
-            QMessageBox.warning(self, "Attention", "Open first PDF file.")
+            QMessageBox.warning(self, "Внимание", "Сначала откройте PDF файл.")
             return
         
         dialog = NumberPageDialog(self)
@@ -2201,7 +3440,7 @@ class BaseImposingModule(QMainWindow):
             self.apply_numeration(settings)
 
     def apply_numeration(self, settings):
-        """Applying page numbering PDF"""
+        """Применение нумерации к страницам PDF"""
         try:
             mm_to_pts = 72 / 25.4
             
@@ -2213,7 +3452,7 @@ class BaseImposingModule(QMainWindow):
                 x_pts = settings['offset_x'] * mm_to_pts
                 y_pts = settings['offset_y'] * mm_to_pts
                 
-                if settings['position'] == 'From below':
+                if settings['position'] == 'Снизу':
                     y_pts = page_h - y_pts
                     
                 r = settings['color'].red() / 255
@@ -2233,10 +3472,10 @@ class BaseImposingModule(QMainWindow):
             
         except Exception as e:
             traceback.print_exc()
-            QMessageBox.critical(self, "Error", f"Failed to add numbering:\n{e}")
+            QMessageBox.critical(self, "Ошибка", f"Не удалось добавить нумерацию:\n{e}")
 
     def load_document(self, file_name):
-        """Generalized loading function PDF-the document in an interface"""
+        """Обобщенная функция загрузки PDF-документа в интерфейс"""
         if file_name and file_name not in self.open_docs:
             doc = fitz.open(file_name)
             self.open_docs[file_name] = doc
@@ -2256,14 +3495,14 @@ class BaseImposingModule(QMainWindow):
             self.switch_active_doc(file_name)
 
     def apply_booklet(self, settings):
-        """Multibooklet: breakdown into notebooks (signatures)"""
-        # FIXED: Now we use self.doc, instead of opening the file again
+        """Мультибуклет: разбивка на тетради (signatures)"""
+        # ИСПРАВЛЕНО: Теперь используем self.doc, а не открываем файл заново
         if not self.doc:
-            QMessageBox.critical(self, "Error", "No document open.")
+            QMessageBox.critical(self, "Ошибка", "Нет открытого документа.")
             return
 
         try:
-            # Working with the current object self.doc
+            # Работаем с текущим объектом self.doc
             N = len(self.doc)
             page_w = self.doc.load_page(0).rect.width
             page_h = self.doc.load_page(0).rect.height
@@ -2285,7 +3524,7 @@ class BaseImposingModule(QMainWindow):
                 num_sheets = len(chunk) // 4
                 
                 for s in range(num_sheets):
-                    # Front side of the sheet
+                    # Лицевая сторона листа
                     page_f = new_doc.new_page(width=page_w * 2, height=page_h)
                     left_f = chunk[-(1 + 2 * s)]
                     right_f = chunk[0 + 2 * s]
@@ -2299,7 +3538,7 @@ class BaseImposingModule(QMainWindow):
                         rect = fitz.Rect(x0, 0, x0 + page_w, page_h)
                         page_f.show_pdf_page(rect, self.doc, right_f)
                     
-                    # Reverse side of the sheet
+                    # Оборотная сторона листа
                     page_b = new_doc.new_page(width=page_w * 2, height=page_h)
                     left_b = chunk[1 + 2 * s]
                     right_b = chunk[-(2 + 2 * s)]
@@ -2313,7 +3552,7 @@ class BaseImposingModule(QMainWindow):
                         rect = fitz.Rect(x0, 0, x0 + page_w, page_h)
                         page_b.show_pdf_page(rect, self.doc, right_b)
             
-            # Close the old one and insert the new one
+            # Закрываем старый и подставляем новый
             if self.doc: self.doc.close()
             self.doc = new_doc
             self.open_docs[self.current_file_path] = self.doc
@@ -2323,12 +3562,12 @@ class BaseImposingModule(QMainWindow):
             
         except Exception as e:
             traceback.print_exc()
-            QMessageBox.critical(self, "Error", f"Failed to create booklet:\n{e}")
+            QMessageBox.critical(self, "Ошибка", f"Не удалось создать буклет:\n{e}")
 
     def open_booklet_module(self):
-        """Opening the booklet module"""
+        """Открытие модуля буклета"""
         if not self.doc:
-            QMessageBox.warning(self, "Attention", "Open first PDF file.")
+            QMessageBox.warning(self, "Внимание", "Сначала откройте PDF файл.")
             return
         
         dialog = BookletDialog(self)
@@ -2336,11 +3575,11 @@ class BaseImposingModule(QMainWindow):
             settings = dialog.get_settings()
             self.apply_booklet(settings)
 
-    # --- ADDED: MODULE BOOKLET B 2 FOLD ---
+    # --- ДОБАВЛЕНО: МОДУЛЬ БУКЛЕТ В 2 СГИБА ---
     def open_booklet2_module(self):
-        """Opening the booklet module in 2 fold"""
+        """Открытие модуля буклета в 2 сгиба"""
         if not self.doc:
-            QMessageBox.warning(self, "Attention", "Open first PDF file.")
+            QMessageBox.warning(self, "Внимание", "Сначала откройте PDF файл.")
             return
         
         dialog = Booklet2Dialog(self)
@@ -2350,7 +3589,7 @@ class BaseImposingModule(QMainWindow):
                 self.apply_booklet2(settings)
 
     def apply_booklet2(self, settings):
-        """Creating a booklet in 2 fold (by 3 pages per sheet)"""
+        """Создание буклета в 2 сгиба (по 3 страницы на лист)"""
         if not self.doc:
             return
 
@@ -2362,66 +3601,66 @@ class BaseImposingModule(QMainWindow):
             mm_to_pts = 72 / 25.4
             inner_pts = settings['inner_offset'] * mm_to_pts
             outer_pts = settings['outer_offset'] * mm_to_pts
-            # The final shift of the outer sheets
+            # Итоговый сдвиг крайних листов
             shift_pts = inner_pts - outer_pts
             
-            # Translate from 1-based V 0-based indexes for array
+            # Переводим из 1-based в 0-based индексы для массива
             front_order = [x - 1 for x in settings['front']] 
             back_order = [x - 1 for x in settings['back']]   
             
             new_doc = fitz.open()
             
-            # We process the document in blocks of 6 pages
+            # Обрабатываем документ блоками по 6 страниц
             for i in range(0, N, 6):
-                # We collect the indices of the current block, replacing the missing ones with -1
+                # Собираем индексы текущего блока, отсутствующие заменяем на -1
                 chunk = []
                 for j in range(6):
                     chunk.append(i + j if i + j < N else -1)
                 
-                # --- Face (width 3 pages) ---
+                # --- Лицевая сторона (ширина 3 страниц) ---
                 page_f = new_doc.new_page(width=page_w * 3, height=page_h)
                 
-                # Left panel (shifts to the right when positive shift)
+                # Левая панель (сдвигается вправо при положительном shift)
                 p_idx = front_order[0]
                 if 0 <= p_idx < 6 and chunk[p_idx] != -1:
                     x0 = shift_pts
                     rect = fitz.Rect(x0, 0, x0 + page_w, page_h)
                     page_f.show_pdf_page(rect, self.doc, chunk[p_idx])
                     
-                # Right panel (shifts to the left when positive shift)
-                # Draw the right and left BEFORE the center, 
-                # so that with a strong displacement the central (motionless) the page hid the excess
+                # Правая панель (сдвигается влево при положительном shift)
+                # Отрисовываем правую и левую ДО центральной, 
+                # чтобы при сильном смещении центральная (неподвижная) страница скрывала под собой излишки
                 p_idx = front_order[2]
                 if 0 <= p_idx < 6 and chunk[p_idx] != -1:
                     x0 = page_w * 2 - shift_pts
                     rect = fitz.Rect(x0, 0, x0 + page_w, page_h)
                     page_f.show_pdf_page(rect, self.doc, chunk[p_idx])
 
-                # Central panel (ALWAYS stays still - no offset applied)
+                # Центральная панель (ВСЕГДА стоит на месте - смещение не применяется)
                 p_idx = front_order[1]
                 if 0 <= p_idx < 6 and chunk[p_idx] != -1:
                     x0 = page_w
                     rect = fitz.Rect(x0, 0, x0 + page_w, page_h)
                     page_f.show_pdf_page(rect, self.doc, chunk[p_idx])
                 
-                # --- Reverse side ---
+                # --- Оборотная сторона ---
                 page_b = new_doc.new_page(width=page_w * 3, height=page_h)
                 
-                # Left panel
+                # Левая панель
                 p_idx = back_order[0]
                 if 0 <= p_idx < 6 and chunk[p_idx] != -1:
                     x0 = shift_pts
                     rect = fitz.Rect(x0, 0, x0 + page_w, page_h)
                     page_b.show_pdf_page(rect, self.doc, chunk[p_idx])
                     
-                # Right panel
+                # Правая панель
                 p_idx = back_order[2]
                 if 0 <= p_idx < 6 and chunk[p_idx] != -1:
                     x0 = page_w * 2 - shift_pts
                     rect = fitz.Rect(x0, 0, x0 + page_w, page_h)
                     page_b.show_pdf_page(rect, self.doc, chunk[p_idx])
 
-                # Central panel (ALWAYS stands still)
+                # Центральная панель (ВСЕГДА стоит на месте)
                 p_idx = back_order[1]
                 if 0 <= p_idx < 6 and chunk[p_idx] != -1:
                     x0 = page_w
@@ -2437,11 +3676,11 @@ class BaseImposingModule(QMainWindow):
             
         except Exception as e:
             traceback.print_exc()
-            QMessageBox.critical(self, "Error", f"Failed to create booklet in 2 fold:\n{e}")
+            QMessageBox.critical(self, "Ошибка", f"Не удалось создать буклет в 2 сгиба:\n{e}")
     # ----------------------------------------
 
     def switch_active_doc(self, file_path):
-        """Switch to another open document"""
+        """Переключение на другой открытый документ"""
         if file_path in self.open_docs:
             self.current_file_path = file_path
             self.doc = self.open_docs[file_path]
@@ -2460,7 +3699,7 @@ class BaseImposingModule(QMainWindow):
         self.btn_toggle_files.setText("▶" if not is_visible else "◀")
 
     def close_specific_document(self, file_path):
-        """Closes a specific document"""
+        """Закрывает конкретный документ"""
         if file_path in self.open_docs:
             doc = self.open_docs[file_path]
             if doc:
@@ -2478,14 +3717,14 @@ class BaseImposingModule(QMainWindow):
             self.files_panel.refresh(self.open_docs)
 
     def close_document(self):
-        """Closes the currently active document."""
+        """Закрывает текущий активный документ."""
 
-        # Normal saved document
+        # Нормальный сохранённый документ
         if self.current_file_path:
             self.close_specific_document(self.current_file_path)
             return
 
-        # Document from ImageToPDF, which has not yet been saved
+        # Документ из ImageToPDF, который ещё не сохранён
         if self.doc is not None:
             try:
                 self.doc.close()
@@ -2495,7 +3734,7 @@ class BaseImposingModule(QMainWindow):
             self.clear_interface()
 
     def clear_interface(self):
-        """Complete clearing of the interface if there are no documents"""
+        """Полная очистка интерфейса если документов нет"""
         self.doc = None
         self.current_file_path = None
         self.active_page_index = -1
@@ -2511,27 +3750,27 @@ class BaseImposingModule(QMainWindow):
                     
         self.page_widgets = []
         self.thumb_widgets = []
-        self.info_label.setText("Size: 0x0 mm | Sheets: 0")
+        self.info_label.setText("Размер: 0x0 мм | Листов: 0")
         self.page_input.setText("0")
 
     def save_file(self):
-        """Saves the current PDF.
+        """Сохраняет текущий PDF.
         
-        If the document has already been opened from a file and is saved under the same name,
-        first a temporary one is created PDF, and then it replaces the original.
+        Если документ уже был открыт из файла и сохраняется под тем же именем,
+        сначала создаётся временный PDF, а затем он заменяет оригинал.
         """
 
         if not self.doc:
             QMessageBox.warning(
                 self,
-                "Attention",
-                "No document open to save."
+                "Внимание",
+                "Нет открытого документа для сохранения."
             )
             return
 
         file_path, _ = QFileDialog.getSaveFileName(
             self,
-            "Save PDF",
+            "Сохранить PDF",
             self.current_file_path if self.current_file_path else "",
             "PDF Files (*.pdf)"
         )
@@ -2539,7 +3778,7 @@ class BaseImposingModule(QMainWindow):
         if not file_path:
             return
 
-        # Add .pdf, if the user did not write it
+        # Добавляем .pdf, если пользователь его не написал
         if not file_path.lower().endswith(".pdf"):
             file_path += ".pdf"
 
@@ -2550,8 +3789,8 @@ class BaseImposingModule(QMainWindow):
             old_path = self.current_file_path
 
             # -------------------------------------------------
-            # CASE 1:
-            # save over an already open file
+            # СЛУЧАЙ 1:
+            # сохраняем поверх уже открытого файла
             # -------------------------------------------------
             if old_path and os.path.abspath(file_path) == os.path.abspath(old_path):
 
@@ -2564,18 +3803,18 @@ class BaseImposingModule(QMainWindow):
                 os.close(fd)
 
                 try:
-                    # First we save it to a temporary file
+                    # Сначала сохраняем во временный файл
                     self.doc.save(
                         temp_path,
                         garbage=4,
                         deflate=True
                     )
 
-                    # Close the current object to free the old file
-                    # before replacement
+                    # Закрываем текущий объект, чтобы освободить старый файл
+                    # перед заменой
                     old_doc = self.doc
 
-                    # Deleting the old entry from open_docs
+                    # Удаляем старую запись из open_docs
                     if old_path in self.open_docs:
                         del self.open_docs[old_path]
 
@@ -2584,10 +3823,10 @@ class BaseImposingModule(QMainWindow):
                     except Exception:
                         pass
 
-                    # Replace the old one PDF new
+                    # Заменяем старый PDF новым
                     os.replace(temp_path, file_path)
 
-                    # Opening an already saved one PDF again
+                    # Открываем уже сохранённый PDF заново
                     new_doc = fitz.open(file_path)
 
                     self.doc = new_doc
@@ -2595,7 +3834,7 @@ class BaseImposingModule(QMainWindow):
                     self.open_docs[file_path] = new_doc
 
                 finally:
-                    # If the temporary file remains after an error
+                    # Если временный файл остался после ошибки
                     if os.path.exists(temp_path):
                         try:
                             os.remove(temp_path)
@@ -2603,43 +3842,43 @@ class BaseImposingModule(QMainWindow):
                             pass
 
             # -------------------------------------------------
-            # CASE 2:
-            # save under a new name
+            # СЛУЧАЙ 2:
+            # сохраняем под новым именем
             # -------------------------------------------------
             else:
 
-                # If such a name already exists, delete the old one
-                # temporary version before recording
+                # Если такое имя уже существует — удаляем старую
+                # временную версию перед записью
                 if os.path.exists(file_path):
                     os.remove(file_path)
 
-                # Save the current document
+                # Сохраняем текущий документ
                 self.doc.save(
                     file_path,
                     garbage=4,
                     deflate=True
                 )
 
-                # If the old document was opened under a different path,
-                # delete old connection
+                # Если старый документ был открыт под другим путём,
+                # удаляем старую связь
                 if old_path and old_path != file_path:
                     if old_path in self.open_docs:
                         del self.open_docs[old_path]
 
-                # Registering a new path
+                # Регистрируем новый путь
                 self.current_file_path = file_path
                 self.open_docs[file_path] = self.doc
 
-            # Updating the document panel
+            # Обновляем панель документов
             self.files_panel.refresh(self.open_docs)
 
-            # Updating information
+            # Обновляем информацию
             self.update_page_info()
 
             QMessageBox.information(
                 self,
-                "Success",
-                f"File saved successfully:\n{file_path}"
+                "Успех",
+                f"Файл успешно сохранён:\n{file_path}"
             )
 
         except Exception as e:
@@ -2647,8 +3886,8 @@ class BaseImposingModule(QMainWindow):
 
             QMessageBox.critical(
                 self,
-                "Save error",
-                f"Failed to save PDF:\n\n{e}"
+                "Ошибка сохранения",
+                f"Не удалось сохранить PDF:\n\n{e}"
             )
         
     def delete_page(self, page_index):
@@ -2671,20 +3910,20 @@ class BaseImposingModule(QMainWindow):
         self.history_manager.save_state()
 
     def duplicate_page(self, page_index):
-        """Duplicating a page"""
+        """Дублирование страницы"""
         if not self.doc:
             return
 
         try:
             page_count_before = len(self.doc)
 
-            # Create a copy of the page at the end of the document
+            # Создаем копию страницы в конец документа
             self.doc.fullcopy_page(page_index)
 
-            # New page index
+            # Индекс новой страницы
             new_index = page_count_before
 
-            # Move the copy immediately after the original
+            # Перемещаем копию сразу после оригинала
             self.doc.move_page(new_index, page_index + 1)
 
             self.active_page_index = page_index + 1
@@ -2696,15 +3935,15 @@ class BaseImposingModule(QMainWindow):
             traceback.print_exc()
             QMessageBox.critical(
                 self,
-                "Error",
-                f"Failed to duplicate page:\n{e}"
+                "Ошибка",
+                f"Не удалось дублировать страницу:\n{e}"
             )
 
     def move_page(self, source_idx, target_idx):
         if not self.doc or source_idx == target_idx: return
         
-        # FIX: Feature workaround PyMuPDF. At shift of 1 step down (idx -> idx+1), 
-        # The library does nothing due to the index shift. The solution is to move the bottom sheet up.
+        # ИСПРАВЛЕНИЕ: Обход особенности PyMuPDF. При сдвиге на 1 шаг вниз (idx -> idx+1), 
+        # библиотека ничего не делает из-за сдвига индексов. Решение - сдвигать нижний лист наверх.
         if target_idx == source_idx + 1:
             self.doc.move_page(target_idx, source_idx)
         else:
@@ -2713,6 +3952,199 @@ class BaseImposingModule(QMainWindow):
         self.active_page_index = target_idx
         self.render_all()
         self.history_manager.save_state()
+
+    def handle_pdftransfer_drop(
+        self,
+        source_path,
+        source_page_indexes,
+        target_page_index
+    ):
+        """
+        Копирует одну или несколько страниц из PDF
+        окна «Обмен страницами» в текущий документ.
+
+        source_page_indexes — список индексов страниц
+        исходного PDF.
+
+        Страницы вставляются ПЕРЕД страницей,
+        на которую выполнено перетаскивание.
+        """
+
+        if not self.doc:
+
+            QMessageBox.warning(
+                self,
+                "Внимание",
+                "Сначала откройте PDF файл."
+            )
+
+            return False
+
+        try:
+
+            # --------------------------------------------------
+            # Нормализуем список
+            # --------------------------------------------------
+
+            if isinstance(
+                source_page_indexes,
+                int
+            ):
+                source_page_indexes = [
+                    source_page_indexes
+                ]
+
+            source_page_indexes = sorted(
+                set(
+                    int(x)
+                    for x in source_page_indexes
+                )
+            )
+
+            if not source_page_indexes:
+                return False
+
+            # --------------------------------------------------
+            # Ищем окно «Обмен страницами»
+            # --------------------------------------------------
+
+            source_dialog = None
+
+            for dlg in getattr(
+                self,
+                "_pdftransfer_dialogs",
+                []
+            ):
+
+                dlg_path = os.path.abspath(
+                    getattr(
+                        dlg,
+                        "file_path",
+                        ""
+                    )
+                )
+
+                if (
+                    dlg_path == source_path
+                    and getattr(
+                        dlg,
+                        "source_doc",
+                        None
+                    ) is not None
+                ):
+
+                    if not dlg.source_doc.is_closed:
+
+                        source_dialog = dlg
+                        break
+
+            # --------------------------------------------------
+
+            if source_dialog is None:
+
+                QMessageBox.warning(
+                    self,
+                    "Обмен страницами",
+                    "Не удалось определить исходный PDF."
+                )
+
+                return False
+
+            source_doc = source_dialog.source_doc
+
+            # --------------------------------------------------
+            # Проверяем страницы
+            # --------------------------------------------------
+
+            valid_pages = []
+
+            for page_index in source_page_indexes:
+
+                if (
+                    0 <= page_index < len(source_doc)
+                ):
+
+                    valid_pages.append(
+                        page_index
+                    )
+
+            if not valid_pages:
+                return False
+
+            # --------------------------------------------------
+            # Место вставки
+            #
+            # Вставляем ПЕРЕД страницей,
+            # на которую бросили.
+            # --------------------------------------------------
+
+            insert_at = max(
+                0,
+                min(
+                    int(target_page_index),
+                    len(self.doc)
+                )
+            )
+
+            # --------------------------------------------------
+            # КОПИРУЕМ СТРАНИЦЫ ПО ОДНОЙ
+            #
+            # Это важно!
+            #
+            # Нельзя сделать один insert_pdf() от первой
+            # до последней страницы, потому что между ними
+            # могут находиться невыбранные страницы.
+            # --------------------------------------------------
+
+            for page_index in valid_pages:
+
+                self.doc.insert_pdf(
+                    source_doc,
+                    from_page=page_index,
+                    to_page=page_index,
+                    start_at=insert_at
+                )
+
+                # Следующая выбранная страница должна
+                # попасть сразу после предыдущей.
+                insert_at += 1
+
+            # --------------------------------------------------
+            # Выбираем последнюю вставленную страницу
+            # --------------------------------------------------
+
+            self.active_page_index = insert_at - 1
+
+            # --------------------------------------------------
+            # Обновляем интерфейс
+            # --------------------------------------------------
+
+            self.render_all()
+
+            # --------------------------------------------------
+            # Сохраняем одно состояние Undo
+            # для всей операции
+            # --------------------------------------------------
+
+            self.history_manager.save_state()
+
+            self.page_input.setText(
+                str(self.active_page_index + 1)
+            )
+
+            return True
+
+        except Exception as e:
+
+            traceback.print_exc()
+
+            QMessageBox.critical(
+                self,
+                "Ошибка",
+                f"Не удалось скопировать страницы:\n\n{e}"
+            )
+
+            return False
 
     def render_all(self):
         if not self.doc: return
@@ -2752,15 +4184,95 @@ class BaseImposingModule(QMainWindow):
             self.btn_scroll_page.setStyleSheet(active_style)
             self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
+   # ==========================================================
+    # DRAG & DROP PDF ФАЙЛОВ ИЗ ПРОВОДНИКА
+    # ==========================================================
+
+    def dragEnterEvent(self, event):
+        """Разрешаем перетаскивание PDF файлов в окно LibrePage."""
+
+        if event.mimeData().hasUrls():
+            for url in event.mimeData().urls():
+                if url.isLocalFile() and url.toLocalFile().lower().endswith(".pdf"):
+                    event.acceptProposedAction()
+                    return
+
+        event.ignore()
+
+
+    def dragMoveEvent(self, event):
+        """Разрешаем перемещение PDF над окном."""
+
+        if event.mimeData().hasUrls():
+            for url in event.mimeData().urls():
+                if url.isLocalFile() and url.toLocalFile().lower().endswith(".pdf"):
+                    event.acceptProposedAction()
+                    return
+
+        event.ignore()
+
+
+    def dropEvent(self, event):
+        """Открываем PDF после сброса файла."""
+
+        if not event.mimeData().hasUrls():
+            event.ignore()
+            return
+
+        opened = False
+
+        for url in event.mimeData().urls():
+
+            if not url.isLocalFile():
+                continue
+
+            file_path = url.toLocalFile()
+
+            if not file_path.lower().endswith(".pdf"):
+                continue
+
+            try:
+                self.load_document(file_path)
+                opened = True
+
+            except Exception as e:
+                traceback.print_exc()
+
+                QMessageBox.critical(
+                    self,
+                    "Ошибка",
+                    f"Не удалось открыть PDF:\n\n{file_path}\n\n{e}"
+                )
+
+        if opened:
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+
     def eventFilter(self, obj, event):
-        if obj == self.scroll_area.viewport() and event.type() == QEvent.Type.Wheel:
+
+        if (
+            obj == self.scroll_area.viewport()
+            and event.type() == QEvent.Type.Wheel
+        ):
+
+            # ==================================================
+            # ОБЫЧНОЕ КОЛЕСО
+            # ==================================================
+
             if self.scroll_mode == 'page':
+
                 delta = event.angleDelta().y()
+
                 if delta > 0:
                     self.navigate_page(-1)
+
                 elif delta < 0:
                     self.navigate_page(1)
+
                 return True
+
         return super().eventFilter(obj, event)
 
     def navigate_page(self, direction):
@@ -2772,7 +4284,7 @@ class BaseImposingModule(QMainWindow):
             self.go_to_page()
 
     def handle_page_click(self, page_index, pos_x=None, pos_y=None):
-        # 1. Page selection logic
+        # 1. Логика выделения страницы
         self.active_page_index = page_index
         self.page_input.setText(str(page_index + 1))
         
@@ -2782,17 +4294,17 @@ class BaseImposingModule(QMainWindow):
         for thumb in self.thumb_widgets:
             thumb.set_active(thumb.page_index == self.active_page_index)
 
-        # 2. Logic for selecting an image if the mode is enabled
+        # 2. Логика выбора изображения, если включен режим
         if self.is_image_select_mode and pos_x is not None and pos_y is not None:
-            # Converting from screen pixels to PDF points
+            # Переводим из пикселей экрана в PDF points
             zoom_factor = self.current_zoom / 100.0
             pdf_x = pos_x / zoom_factor
             pdf_y = pos_y / zoom_factor
             
             page = self.doc.load_page(page_index)
-            # Trying to select a photo by coordinates
+            # Пробуем выделить фото по координатам
             self.image_selection_manager.select_image_at(page, page_index, pdf_x, pdf_y)
-            # Redraw the pages to update the blue highlight border
+            # Перерисовываем страницы, чтобы обновить синюю рамку выделения
             self.render_pages()
 
     def center_page_in_view(self):
@@ -2829,10 +4341,10 @@ class BaseImposingModule(QMainWindow):
     def toggle_thumb_columns(self):
         if self.thumb_columns == 2:
             self.thumb_columns = 1
-            self.btn_toggle_cols.setText("Switch to 2 speakers")
+            self.btn_toggle_cols.setText("Переключить в 2 колонки")
         else:
             self.thumb_columns = 2
-            self.btn_toggle_cols.setText("Switch to 1 column")
+            self.btn_toggle_cols.setText("Переключить в 1 колонку")
         self.render_thumbnails()
 
     def thumbnail_clicked(self, page_index):
@@ -2843,18 +4355,212 @@ class BaseImposingModule(QMainWindow):
         if item and item.widget():
             self.scroll_area.ensureWidgetVisible(item.widget(), 10, 10)
 
-    def set_mode(self, count, fit_method='width', sender_btn=None, margin=40):
+    def set_page_count(self, count, sender_btn=None):
+        """
+        Устанавливает количество страниц в одном ряду.
+
+        1, 2 страницы  -> подгонка по высоте.
+        3, 5, 7 страниц -> подгонка по ширине окна.
+        """
+
+        if not self.doc:
+            return
+
+        # --------------------------------------------------
+        # Устанавливаем количество страниц в ряду
+        # --------------------------------------------------
+
         self.pages_in_row = count
-        if sender_btn: self.update_button_styles(sender_btn)
-        if fit_method == 'width':
-            self.fit_to_width(margin, sender_btn)
-        else:
-            self.fit_to_height(sender_btn)
-            
-        show_rulers_flag = (self.pages_in_row == 1) and self.rulers_enabled
+
+        if sender_btn:
+            self.update_button_styles(sender_btn)
+
+        # --------------------------------------------------
+        # 1 и 2 страницы:
+        # выравниваем по высоте
+        # --------------------------------------------------
+
+        if count in (1, 2):
+
+            self.fit_to_height()
+
+        # --------------------------------------------------
+        # 3, 5 и 7 страниц:
+        # все страницы должны полностью
+        # помещаться по ширине окна
+        # --------------------------------------------------
+
+        elif count in (3, 5, 7):
+
+            self.fit_to_width()
+
+        # --------------------------------------------------
+        # Линейки показываем только при одном листе
+        # --------------------------------------------------
+
+        show_rulers_flag = (
+            self.pages_in_row == 1
+            and self.rulers_enabled
+        )
+
         for widget in self.page_widgets:
+
             widget.show_rulers = show_rulers_flag
             widget.update_style()
+
+        # --------------------------------------------------
+        # Обновляем отображение
+        # --------------------------------------------------
+
+        self.render_pages()
+
+        self.center_page_in_view()
+
+    def fit_to_width(self, margin=20, sender_btn=None):
+        """
+        Автоматически подгоняет страницы текущего ряда
+        по ширине окна.
+
+        Используется для 3, 5 и 7 страниц в ряду.
+        """
+
+        if not self.doc:
+            return
+
+        if sender_btn:
+            self.update_button_styles(sender_btn)
+
+        # --------------------------------------------------
+        # Видимая область
+        # --------------------------------------------------
+
+        viewport = self.scroll_area.viewport()
+
+        view_w = viewport.width()
+
+        if view_w <= 0:
+            return
+
+        # --------------------------------------------------
+        # Реальные отступы layout
+        # --------------------------------------------------
+
+        layout = self.preview_layout
+
+        margins = layout.contentsMargins()
+
+        left_margin = margins.left()
+        right_margin = margins.right()
+
+        spacing = layout.horizontalSpacing()
+
+        if spacing < 0:
+            spacing = 0
+
+        # --------------------------------------------------
+        # Доступная ширина
+        # --------------------------------------------------
+
+        available_w = view_w
+
+        available_w -= left_margin
+        available_w -= right_margin
+
+        # Безопасный запас слева и справа
+        available_w -= margin * 2
+
+        # Промежутки между листами
+        if self.pages_in_row > 1:
+
+            available_w -= (
+                spacing *
+                (self.pages_in_row - 1)
+            )
+
+        # --------------------------------------------------
+        # Защита
+        # --------------------------------------------------
+
+        if available_w <= 0:
+            return
+
+        # --------------------------------------------------
+        # Находим максимальную ширину страницы
+        # в текущем ряду
+        # --------------------------------------------------
+
+        start_page = (
+            self.active_page_index
+            if self.active_page_index >= 0
+            else 0
+        )
+
+        # Начало ряда
+        row_start = (
+            start_page // self.pages_in_row
+        ) * self.pages_in_row
+
+        max_page_width = 0
+
+        for i in range(self.pages_in_row):
+
+            page_index = row_start + i
+
+            if page_index >= len(self.doc):
+                break
+
+            page = self.doc.load_page(page_index)
+
+            page_width = page.rect.width
+
+            if page_width > max_page_width:
+                max_page_width = page_width
+
+        # --------------------------------------------------
+        # Защита
+        # --------------------------------------------------
+
+        if max_page_width <= 0:
+            return
+
+        # --------------------------------------------------
+        # Ширина, которую может занимать один лист
+        # --------------------------------------------------
+
+        page_display_width = (
+            available_w /
+            self.pages_in_row
+        )
+
+        # Для 5 и 7 листов немного уменьшаем размер,
+        # чтобы последний лист гарантированно помещался.
+        if self.pages_in_row == 5:
+            page_display_width *= 0.96
+
+        elif self.pages_in_row == 7:
+            page_display_width *= 0.94
+
+        # --------------------------------------------------
+        # Рассчитываем реальный PDF zoom
+        # --------------------------------------------------
+
+        self.current_zoom = int(
+            (
+                page_display_width /
+                max_page_width
+            ) * 100
+        )
+
+        if self.current_zoom < 10:
+            self.current_zoom = 10
+
+        # --------------------------------------------------
+        # Рендер
+        # --------------------------------------------------
+
+        self.render_pages()
+
+        self.center_page_in_view()
 
     def get_page_size_mm(self, page):
         width_mm = page.rect.width * 25.4 / 72
@@ -2914,9 +4620,11 @@ class BaseImposingModule(QMainWindow):
                 if item.widget().geometry().y() + (item.widget().geometry().height() / 2) >= pos:
                     current_page = i + 1
                     break
-        w, h = self.get_page_size_mm(self.doc.load_page(0))
-        # Updated text (without p)
-        self.info_label.setText(f"Size: {w:.1f}x{h:.1f} mm | Sheets: {total_pages}")
+        page_index = max(0, min(current_page - 1, total_pages - 1))
+        current_page_obj = self.doc.load_page(page_index)
+        w, h = self.get_page_size_mm(current_page_obj)
+        # Обновленный текст (без стр)
+        self.info_label.setText(f"Размер: {w:.1f}x{h:.1f} мм | Листов: {total_pages}")
         if not self.page_input.hasFocus():
             self.page_input.setText(str(min(current_page, total_pages)))
 
@@ -2935,49 +4643,62 @@ class BaseImposingModule(QMainWindow):
                 self.scroll_area.ensureWidgetVisible(item.widget(), 10, 10)
         except ValueError: pass 
 
-    def on_zoom_changed(self):
-        self.current_zoom = self.zoom_slider.value()
-        if self.doc: self.render_pages()
-
+      
     def fit_to_height(self, sender_btn=None):
-        if not self.doc: return
-        if sender_btn: self.update_button_styles(sender_btn)
-        page_h = self.doc.load_page(0).rect.height
+        if not self.doc:
+            return
+
+        if sender_btn:
+            self.update_button_styles(sender_btn)
+
+        # Используем ТЕКУЩУЮ активную страницу,
+        # а не всегда первую страницу документа
+        page_index = self.active_page_index
+
+        if page_index < 0 or page_index >= len(self.doc):
+            page_index = 0
+
+        page = self.doc.load_page(page_index)
+        page_h = page.rect.height
+
         view_h = self.scroll_area.viewport().height()
-        
+
         if self.pages_in_row == 1 and self.rulers_enabled:
             view_h -= 40
-            
-        self.current_zoom = int((view_h / page_h) * 100)
-        if self.current_zoom < 10: self.current_zoom = 10 
-            
-        self.zoom_slider.setValue(self.current_zoom)
+
+        if page_h <= 0:
+            return
+
+        # --------------------------------------------------
+        # Реальный технический масштаб PDF.
+        #
+        # Этот размер считается за 100%
+        # в новом "МАСШТАБ ЛИСТА".
+        # --------------------------------------------------
+
+        self.current_zoom = int(
+            (view_h / page_h) * 100
+        )
+
+        if self.current_zoom < 10:
+            self.current_zoom = 10
+
+        # Новый масштаб листа:
+        # размер "По высоте" = 100%
+        if hasattr(self, "page_zoom"):
+            self.page_zoom.set_100_percent()
+
         self.render_pages()
         self.center_page_in_view()
 
-    def fit_to_width(self, margin=40, sender_btn=None):
-        if not self.doc: return
-        if sender_btn: self.update_button_styles(sender_btn)
-        page_w = self.doc.load_page(0).rect.width
-        view_w = (self.scroll_area.viewport().width() - margin) / self.pages_in_row
-        
-        if self.pages_in_row == 1 and self.rulers_enabled:
-            view_w -= 40
-            
-        self.current_zoom = int((view_w / page_w) * 100)
-        if self.current_zoom < 10: self.current_zoom = 10
-            
-        self.zoom_slider.setValue(self.current_zoom)
-        self.render_pages()
-        self.center_page_in_view()
-
+    
     def open_file(self):
-        file_name, _ = QFileDialog.getOpenFileName(self, "Open PDF", "", "PDF Files (*.pdf)")
+        file_name, _ = QFileDialog.getOpenFileName(self, "Открыть PDF", "", "PDF Files (*.pdf)")
         if file_name:
             self.load_document(file_name)
 
     def open_image_to_pdf(self):
-        """Opens the module Image V PDF."""
+        """Открывает модуль Image в PDF."""
 
         dialog = ImageToPdfDialog(self)
 
@@ -2986,35 +4707,35 @@ class BaseImposingModule(QMainWindow):
                 self.open_created_pdf(dialog.created_doc)
 
     def open_created_pdf(self, new_doc):
-        """Opens PDF, created by module Image V PDF."""
+        """Открывает PDF, созданный модулем Image в PDF."""
 
         try:
-            # If an old document was opened without saved changes —
-            # just leave it in the list of open documents.
+            # Если был открыт старый документ без сохранённых изменений —
+            # просто оставляем его в списке открытых документов.
             if self.doc is not None and self.current_file_path:
                 self.open_docs[self.current_file_path] = self.doc
 
-            # The new document becomes active
+            # Новый документ становится активным
             self.doc = new_doc
 
-            # It's not saved yet
+            # Пока он не сохранён
             self.current_file_path = None
 
-            # First page
+            # Первая страница
             self.active_page_index = 0
 
-            # Resetting history
+            # Сбрасываем историю
             self.history_manager.history = [self.doc.write()]
             self.history_manager.index = 0
 
-            # Updating the display
+            # Обновляем отображение
             self.fit_to_height()
             self.render_thumbnails()
             self.update_page_info()
 
             self.page_input.setText("1")
 
-            # Updating the list of documents
+            # Обновляем список документов
             self.files_panel.refresh(self.open_docs)
 
             self.update()
@@ -3024,41 +4745,104 @@ class BaseImposingModule(QMainWindow):
 
             QMessageBox.critical(
                 self,
-                "Error",
-                f"Failed to open created PDF:\n\n{e}"
+                "Ошибка",
+                f"Не удалось открыть созданный PDF:\n\n{e}"
         
             )
 
     def render_thumbnails(self):
-        if not self.doc: return
+        if not self.doc:
+            return
+
         while self.thumb_layout.count():
             item = self.thumb_layout.takeAt(0)
-            if item and item.widget(): item.widget().deleteLater()
-            
+            if item and item.widget():
+                item.widget().deleteLater()
+
         self.thumb_widgets = []
-        zoom_factor = 0.12 if self.thumb_columns == 2 else 0.25
-        
+
+        # Фиксированная ширина миниатюры.
+        # Высота будет рассчитываться отдельно для каждой страницы
+        # по её реальным пропорциям.
+        THUMB_WIDTH = 100
+
+        zoom_factor = 1.5
+
         for page_num in range(len(self.doc)):
             page = self.doc.load_page(page_num)
-            pix = page.get_pixmap(matrix=fitz.Matrix(zoom_factor, zoom_factor))
-            img = QImage(pix.samples, pix.width, pix.height, pix.stride, QImage.Format.Format_RGB888)
-            
+
+            # Рендерим КАЖДУЮ страницу в её собственном размере
+            pix = page.get_pixmap(
+                matrix=fitz.Matrix(zoom_factor, zoom_factor),
+                alpha=False
+            )
+
+            img = QImage(
+                pix.samples,
+                pix.width,
+                pix.height,
+                pix.stride,
+                QImage.Format.Format_RGB888
+            )
+
             pixmap = QPixmap.fromImage(img)
-            pixmap = add_number_to_pixmap(pixmap, page_num + 1)
-            
+
+            # Номер страницы
+            pixmap = add_number_to_pixmap(
+                pixmap,
+                page_num + 1
+            )
+
+            # --------------------------------------------------
+            # ВАЖНО:
+            # высота рассчитывается по реальному соотношению
+            # ширины и высоты ИМЕННО ЭТОЙ страницы.
+            # --------------------------------------------------
+            if pixmap.width() > 0:
+                thumb_height = round(
+                    THUMB_WIDTH * pixmap.height() / pixmap.width()
+                )
+            else:
+                thumb_height = 140
+
+            pixmap = pixmap.scaled(
+                THUMB_WIDTH,
+                thumb_height,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation
+            )
+
+            # Контейнер конкретной миниатюры
             container = QWidget()
+
             v_layout = QVBoxLayout(container)
-            
-            label = ClickableThumbnail(page_num, self.thumbnail_clicked, self.mouse_handler)
+            v_layout.setContentsMargins(0, 0, 0, 0)
+            v_layout.setSpacing(0)
+
+            label = ClickableThumbnail(
+                page_num,
+                self.thumbnail_clicked,
+                self.mouse_handler,
+                self
+            )
+
             label.setPixmap(pixmap)
-            
+
             if page_num == self.active_page_index:
                 label.set_active(True)
-                
+
             self.thumb_widgets.append(label)
-            
-            v_layout.addWidget(label, alignment=Qt.AlignmentFlag.AlignCenter)
-            self.thumb_layout.addWidget(container, page_num // self.thumb_columns, page_num % self.thumb_columns)
+
+            v_layout.addWidget(
+                label,
+                alignment=Qt.AlignmentFlag.AlignCenter
+            )
+
+            self.thumb_layout.addWidget(
+                container,
+                page_num // self.thumb_columns,
+                page_num % self.thumb_columns
+            )
 
     def render_pages(self):
         while self.preview_layout.count():
@@ -3078,45 +4862,50 @@ class BaseImposingModule(QMainWindow):
             w_mm, h_mm = self.get_page_size_mm(page)
             pixels_per_mm = pix.width / w_mm if w_mm > 0 else 1.0
             
-            # Added new arguments zoom_factor And image_selection_manager
+            # Добавлены новые аргументы zoom_factor и image_selection_manager
             label = PageWidget(QPixmap.fromImage(img), page_num, self.handle_page_click, pixels_per_mm, show_rulers_flag, w_mm, h_mm, zoom_factor, self.image_selection_manager)
             
             if page_num == self.active_page_index:
                 label.set_active(True)
             
-            self.preview_layout.addWidget(label, page_num // self.pages_in_row, page_num % self.pages_in_row)
+            self.preview_layout.addWidget(
+                label,
+                page_num // self.pages_in_row,
+                page_num % self.pages_in_row,
+                Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop
+            )
             self.page_widgets.append(label)
 
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     
-    # We determine the path to the image in the same folder as main.py
+    # Определяем путь к изображению в той же папке, что и main.py
     base_dir = os.path.dirname(os.path.abspath(__file__))
     splash_image_path = os.path.join(base_dir, "logostart.png")
     
-    # Uploading a picture
+    # Загружаем картинку
     if os.path.exists(splash_image_path):
         splash_pixmap = QPixmap(splash_image_path)
-        # Create a splash window without borders and always on top of other windows
+        # Создаем окно заставки без рамок и всегда поверх других окон
         splash = QSplashScreen(splash_pixmap, Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.FramelessWindowHint)
-        # Required flag to support transparency (alpha channel) pictures
+        # Обязательный флаг для поддержки прозрачности (альфа-канала) картинки
         splash.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         splash.show()
-        # Rendering the splash screen before starting other calculations
+        # Отрисовываем заставку до начала других вычислений
         app.processEvents()
     else:
         splash = None
     
-    # Initializing the main window (but we don't show it yet)
-    window = BaseImposingModule("LibrePageKST v.0.1")
+    # Инициализируем главное окно (но пока не показываем)
+    window = BaseImposingModule("LibrePageKST v.0.5")
     
-    # Function to hide the splash screen and show the main window
+    # Функция для скрытия заставки и показа главного окна
     def show_main_window():
-        if splash: splash.finish(window) # Give focus to the main window
+        if splash: splash.finish(window) # Передаем фокус главному окну
         window.show()
         
-    # Running the function show_main_window exactly in 4 seconds (4000 ms)
+    # Запускаем функцию show_main_window ровно через 4 секунды (4000 мс)
     QTimer.singleShot(4000, show_main_window)
     
     sys.exit(app.exec())

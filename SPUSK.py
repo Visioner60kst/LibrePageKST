@@ -9,29 +9,29 @@ from PyQt6.QtCore import Qt
 class SpuskDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Imposition of stripes")
+        self.setWindowTitle("Спуск полос")
         self.resize(500, 530)
 
         layout = QVBoxLayout(self)
 
-        # 1. Group: SHUFFLE PAGES
-        group1 = QGroupBox("SHUFFLE PAGES (Analogue Shuffle pages)")
+        # 1. Группа: ПЕРЕТАСОВАТЬ СТРАНИЦЫ
+        group1 = QGroupBox("ПЕРЕТАСОВАТЬ СТРАНИЦЫ (Аналог Shuffle pages)")
         layout1 = QVBoxLayout()
 
         h_layout1 = QHBoxLayout()
-        h_layout1.addWidget(QLabel("Number of pages in a group:"))
+        h_layout1.addWidget(QLabel("Количество страниц в группе:"))
         self.group_size_input = QLineEdit("4")
         h_layout1.addWidget(self.group_size_input)
         layout1.addLayout(h_layout1)
 
         instruction_text = (
             "___________________________________________________________________\n"
-            "RULES\n"
-            "List the number of each page in the first group. Numbers are separated by spaces.\n"
-            "If after the number you put *(asterisk), then the page will turn to 180 city.\n"
-            "If after the number you put / , then the page will turn to 90 gr. clockwise\n"
-            "If after the number you put \\ , then the page will turn to 90 gr. counterclockwise\n"
-            "X adds a blank page\n"
+            "ПРАВИЛА\n"
+            "Укажите номер каждой страницы в первой группе. Числа разделяются пробелами.\n"
+            "Если после числа поставить *(звездочку), то страница перевернется на 180 гр.\n"
+            "Если после числа поставить / , то страница перевернется на 90 гр. по часовой\n"
+            "Если после числа поставить \\ , то страница перевернется на 90 гр. против часовой\n"
+            "X добавляет пустую страницу\n"
             "___________________________________________________________________"
         )
         instr_label = QLabel(instruction_text)
@@ -44,15 +44,15 @@ class SpuskDialog(QDialog):
         group1.setLayout(layout1)
         layout.addWidget(group1)
 
-        # 2. Group: PLACEMENT OF PAGES ON A SHEET
-        group2 = QGroupBox("PLACEMENT OF PAGES ON A SHEET (Analogue N-up page)")
+        # 2. Группа: РАЗМЕЩЕНИЕ СТРАНИЦ НА ЛИСТЕ
+        group2 = QGroupBox("РАЗМЕЩЕНИЕ СТРАНИЦ НА ЛИСТЕ (Аналог N-up page)")
         layout2 = QVBoxLayout()
 
         h_layout2 = QHBoxLayout()
-        h_layout2.addWidget(QLabel("Select new sheet size:"))
+        h_layout2.addWidget(QLabel("Выберите новый размер листа:"))
         self.size_combo = QComboBox()
         self.sizes = {
-            "Custom": (0, 0),
+            "Пользовательский": (0, 0),
             "A0": (841, 1189),
             "A1": (594, 841),
             "A2": (420, 594),
@@ -69,19 +69,19 @@ class SpuskDialog(QDialog):
         layout2.addLayout(h_layout2)
 
         h_layout3 = QHBoxLayout()
-        h_layout3.addWidget(QLabel("Width (mm):"))
+        h_layout3.addWidget(QLabel("Ширина (мм):"))
         self.width_input = QLineEdit("297")
         h_layout3.addWidget(self.width_input)
-        h_layout3.addWidget(QLabel("Height (mm):"))
+        h_layout3.addWidget(QLabel("Высота (мм):"))
         self.height_input = QLineEdit("420")
         h_layout3.addWidget(self.height_input)
         layout2.addLayout(h_layout3)
 
         h_layout4 = QHBoxLayout()
-        h_layout4.addWidget(QLabel("Place on a sheet - in a column:"))
+        h_layout4.addWidget(QLabel("Поместить на листе  -  в столбик:"))
         self.cols_input = QLineEdit("2")
         h_layout4.addWidget(self.cols_input)
-        h_layout4.addWidget(QLabel("on time:"))
+        h_layout4.addWidget(QLabel("в строку:"))
         self.rows_input = QLineEdit("1")
         h_layout4.addWidget(self.rows_input)
         layout2.addLayout(h_layout4)
@@ -89,14 +89,14 @@ class SpuskDialog(QDialog):
         group2.setLayout(layout2)
         layout.addWidget(group2)
 
-        # Load and Save button block
+        # Блок кнопок Загрузить и Сохранить
         btn_saveload_layout = QHBoxLayout()
         
-        self.btn_load = QPushButton("LOAD Descent")
+        self.btn_load = QPushButton("ЗАГРУЗИТЬ СПУСК")
         self.btn_load.setStyleSheet("background-color: #17a2b8; color: white; font-weight: bold; padding: 5px;")
         self.btn_load.clicked.connect(self.load_spusk)
         
-        self.btn_save = QPushButton("SAVE Descent")
+        self.btn_save = QPushButton("СОХРАНИТЬ СПУСК")
         self.btn_save.setStyleSheet("background-color: #ffc107; color: black; font-weight: bold; padding: 5px;")
         self.btn_save.clicked.connect(self.save_spusk)
         
@@ -104,14 +104,14 @@ class SpuskDialog(QDialog):
         btn_saveload_layout.addWidget(self.btn_save)
         layout.addLayout(btn_saveload_layout)
 
-        # Apply button
-        self.btn_apply = QPushButton("APPLY")
+        # Кнопка применить
+        self.btn_apply = QPushButton("ПРИМЕНИТЬ")
         self.btn_apply.setStyleSheet("background-color: #28a745; color: white; font-weight: bold; padding: 10px;")
         self.btn_apply.clicked.connect(self.accept)
         layout.addWidget(self.btn_apply)
 
     def update_size_inputs(self, text):
-        if text != "Custom":
+        if text != "Пользовательский":
             w, h = self.sizes[text]
             self.width_input.setText(str(w))
             self.height_input.setText(str(h))
@@ -134,31 +134,31 @@ class SpuskDialog(QDialog):
                 'formula': formula
             }
         except ValueError:
-            QMessageBox.warning(self, "Error", "Check that the entered numeric values ​​are correct.")
+            QMessageBox.warning(self, "Ошибка", "Проверьте правильность введенных числовых значений.")
             return None
 
     def get_resources_dir(self):
-        """Determines the correct folder path resources/spusk, even if the program has become exe"""
+        """Определяет правильный путь к папке resources/spusk, даже если программа стала exe"""
         if getattr(sys, 'frozen', False):
-            # If the program is compiled PyInstaller
+            # Если программа скомпилирована PyInstaller
             base_dir = os.path.dirname(sys.executable)
         else:
-            # If launched as python script
+            # Если запущена как python скрипт
             base_dir = os.path.dirname(os.path.abspath(__file__))
             
         res_dir = os.path.join(base_dir, "resources", "spusk")
-        os.makedirs(res_dir, exist_ok=True) # Create a folder if it doesn't exist
+        os.makedirs(res_dir, exist_ok=True) # Создаем папку, если ее нет
         return res_dir
 
     def save_spusk(self):
         settings = self.get_settings()
         if not settings:
-            return # If there is an error in the fields, get_settings() will return None
+            return # Если есть ошибка в полях, get_settings() вернет None
             
         spusk_dir = self.get_resources_dir()
         filepath, _ = QFileDialog.getSaveFileName(
             self, 
-            "Save Descent", 
+            "Сохранить спуск", 
             spusk_dir, 
             "JSON Files (*.json)"
         )
@@ -170,15 +170,15 @@ class SpuskDialog(QDialog):
             try:
                 with open(filepath, 'w', encoding='utf-8') as f:
                     json.dump(settings, f, ensure_ascii=False, indent=4)
-                QMessageBox.information(self, "Success", "Descent script saved.")
+                QMessageBox.information(self, "Успешно", "Сценарий спуска сохранен.")
             except Exception as e:
-                QMessageBox.warning(self, "Save error", f"Failed to save file:\n{e}")
+                QMessageBox.warning(self, "Ошибка сохранения", f"Не удалось сохранить файл:\n{e}")
 
     def load_spusk(self):
         spusk_dir = self.get_resources_dir()
         filepath, _ = QFileDialog.getOpenFileName(
             self, 
-            "Load descent", 
+            "Загрузить спуск", 
             spusk_dir, 
             "JSON Files (*.json)"
         )
@@ -188,7 +188,7 @@ class SpuskDialog(QDialog):
                 with open(filepath, 'r', encoding='utf-8') as f:
                     settings = json.load(f)
                 
-                # Substituting values ​​in the fields
+                # Подставляем значения в поля
                 self.width_input.setText(str(settings.get('target_w', '')))
                 self.height_input.setText(str(settings.get('target_h', '')))
                 self.cols_input.setText(str(settings.get('cols', '')))
@@ -196,18 +196,18 @@ class SpuskDialog(QDialog):
                 self.group_size_input.setText(str(settings.get('group_size', '')))
                 self.formula_input.setText(str(settings.get('formula', '')))
                 
-                # Trying to match the loaded sizes with the format drop-down list
+                # Пытаемся сопоставить загруженные размеры с выпадающим списком форматов
                 w = settings.get('target_w', 0)
                 h = settings.get('target_h', 0)
                 matched = False
                 for size_name, (sw, sh) in self.sizes.items():
-                    if size_name != "Custom" and float(sw) == float(w) and float(sh) == float(h):
+                    if size_name != "Пользовательский" and float(sw) == float(w) and float(sh) == float(h):
                         self.size_combo.setCurrentText(size_name)
                         matched = True
                         break
                 
                 if not matched:
-                    self.size_combo.setCurrentText("Custom")
+                    self.size_combo.setCurrentText("Пользовательский")
 
             except Exception as e:
-                QMessageBox.warning(self, "Loading error", f"Failed to upload file:\n{e}")
+                QMessageBox.warning(self, "Ошибка загрузки", f"Не удалось загрузить файл:\n{e}")

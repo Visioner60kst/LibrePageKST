@@ -2,7 +2,7 @@ from PyQt6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLab
 from PyQt6.QtCore import Qt, QRect
 from PyQt6.QtGui import QPainter, QPen, QColor
 
-# Custom QLabel to draw a rectangle with the mouse
+# Кастомный QLabel для рисования прямоугольника мышью
 class DrawableLabel(QLabel):
     def __init__(self, pixmap):
         super().__init__()
@@ -33,15 +33,15 @@ class DrawableLabel(QLabel):
         super().paintEvent(event)
         if self.start_point and self.end_point:
             painter = QPainter(self)
-            # Draw a red frame for clarity when selecting
+            # Рисуем красную рамку для наглядности при выделении
             painter.setPen(QPen(QColor(255, 0, 0), 2, Qt.PenStyle.DashLine))
-            # Draw a translucent white fill to make it clear what we are hiding
+            # Рисуем полупрозрачную белую заливку, чтобы было понятно, что мы скрываем
             painter.setBrush(QColor(255, 255, 255, 150))
             rect = QRect(self.start_point, self.end_point).normalized()
             painter.drawRect(rect)
 
     def get_rect_ratio(self):
-        """Returns the coordinates of the selection as a percentage of the width/heights (from 0.0 to 1.0)"""
+        """Возвращает координаты выделения в виде процентов от ширины/высоты (от 0.0 до 1.0)"""
         if not self.start_point or not self.end_point:
             return None
         rect = QRect(self.start_point, self.end_point).normalized()
@@ -52,19 +52,19 @@ class DrawableLabel(QLabel):
 class MaskPageDialog(QDialog):
     def __init__(self, pixmap, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("ADD RECTANGLE")
+        self.setWindowTitle("ДОБАВИТЬ ПРЯМОУГОЛЬНИК")
         
-        # Set a fixed size of the program window
+        # Устанавливаем фиксированный размер окна программы
         self.setFixedSize(850, 700)
         
         layout = QVBoxLayout(self)
         
-        # Instructions
-        info = QLabel("Select with your mouse the area you want to hide (fill with white):")
+        # Инструкция
+        info = QLabel("Выделите мышкой область, которую хотите скрыть (залить белым):")
         layout.addWidget(info)
         
-        # We scale the image so that it always fits in our window
-        # maintaining proportions and smoothing quality
+        # Масштабируем изображение, чтобы оно всегда помещалось в наше окно
+        # сохраняя пропорции и сглаживая качество
         max_w = 800
         max_h = 550
         scaled_pixmap = pixmap.scaled(
@@ -73,24 +73,24 @@ class MaskPageDialog(QDialog):
             Qt.TransformationMode.SmoothTransformation
         )
         
-        # Drawing widget (we transmit the already scaled one pixmap)
+        # Виджет рисования (передаем уже отмасштабированный pixmap)
         self.label = DrawableLabel(scaled_pixmap)
         self.label.setCursor(Qt.CursorShape.CrossCursor)
         layout.addWidget(self.label, alignment=Qt.AlignmentFlag.AlignCenter)
         
-        # Selecting pages
+        # Выбор страниц
         self.mode_combo = QComboBox()
         self.mode_combo.addItems([
-            "Hide on current page", 
-            "Hide on all pages"
+            "Скрыть на текущей странице", 
+            "Скрыть на всех страницах"
         ])
         layout.addWidget(self.mode_combo)
         
-        # Buttons
+        # Кнопки
         btn_layout = QHBoxLayout()
-        self.btn_ok = QPushButton("Apply")
+        self.btn_ok = QPushButton("Применить")
         self.btn_ok.clicked.connect(self.accept)
-        self.btn_cancel = QPushButton("Cancel")
+        self.btn_cancel = QPushButton("Отмена")
         self.btn_cancel.clicked.connect(self.reject)
         
         btn_layout.addWidget(self.btn_ok)

@@ -8,15 +8,15 @@ class ThumbnailHandler:
     def handle_context_menu(self, widget, pos):
         menu = QMenu()
         
-        # Move Actions
-        up_action = menu.addAction("UP")
-        down_action = menu.addAction("DOWN")
+        # Действия перемещения
+        up_action = menu.addAction("ВВЕРХ")
+        down_action = menu.addAction("ВНИЗ")
         menu.addSeparator()
         
-        delete_action = menu.addAction("Delete page")
-        insert_before_action = menu.addAction("Insert empty BEFORE")
-        insert_after_action = menu.addAction("Insert empty AFTER")
-        duplicate_action = menu.addAction("Duplicate page")
+        delete_action = menu.addAction("Удалить страницу")
+        insert_before_action = menu.addAction("Вставить пустую ДО")
+        insert_after_action = menu.addAction("Вставить пустую ПОСЛЕ")
+        duplicate_action = menu.addAction("Дублировать страницу")
         
         action = menu.exec(widget.mapToGlobal(pos))
         
@@ -26,7 +26,7 @@ class ThumbnailHandler:
         idx = widget.page_index
         total_pages = len(self.main_window.doc)
 
-        # Move logic
+        # Логика перемещения
         if action == up_action:
             if idx > 0:
                 self.main_window.move_page(idx, idx - 1)
@@ -34,7 +34,7 @@ class ThumbnailHandler:
             if idx < total_pages - 1:
                 self.main_window.move_page(idx, idx + 1)
         
-        # Other actions
+        # Остальные действия
         elif action == delete_action:
             self.main_window.delete_page(idx)
         elif action == insert_before_action:

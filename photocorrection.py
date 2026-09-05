@@ -4,29 +4,29 @@ from PyQt6.QtCore import Qt
 class PhotoCorrectionDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Photo correction")
+        self.setWindowTitle("Коррекция фото")
         self.setModal(True)
         self.resize(300, 200)
 
         layout = QVBoxLayout(self)
 
-        # Brightness
-        layout.addWidget(QLabel("Brightness:"))
+        # Яркость
+        layout.addWidget(QLabel("Яркость:"))
         self.slider_bright = self.create_slider()
         layout.addWidget(self.slider_bright)
 
-        # Contrast
-        layout.addWidget(QLabel("Contrast:"))
+        # Контрастность
+        layout.addWidget(QLabel("Контрастность:"))
         self.slider_contrast = self.create_slider()
         layout.addWidget(self.slider_contrast)
 
-        # Saturation
-        layout.addWidget(QLabel("Saturation:"))
+        # Насыщенность
+        layout.addWidget(QLabel("Насыщенность:"))
         self.slider_saturation = self.create_slider()
         layout.addWidget(self.slider_saturation)
 
-        # Apply button
-        self.btn_apply = QPushButton("APPLY")
+        # Кнопка Применить
+        self.btn_apply = QPushButton("ПРИМЕНИТЬ")
         self.btn_apply.setStyleSheet("background-color: #2196F3; color: white; font-weight: bold;")
         self.btn_apply.clicked.connect(self.accept)
         layout.addWidget(self.btn_apply)
@@ -40,8 +40,8 @@ class PhotoCorrectionDialog(QDialog):
         return slider
 
     def get_settings(self):
-        # Converting the slider values (-100..100) into odds (0..2.0)
-        # 0 -> 1.0 (original), -100 -> 0.0 (minimum), 100 -> 2.0 (maximum)
+        # Преобразуем значения ползунков (-100..100) в коэффициенты (0..2.0)
+        # 0 -> 1.0 (оригинал), -100 -> 0.0 (минимум), 100 -> 2.0 (максимум)
         return {
             "brightness": 1.0 + (self.slider_bright.value() / 100.0),
             "contrast": 1.0 + (self.slider_contrast.value() / 100.0),

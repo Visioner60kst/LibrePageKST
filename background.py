@@ -8,32 +8,32 @@ from PyQt6.QtGui import QColor
 class BackgroundDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle(self.tr("Background setting"))
+        self.setWindowTitle("Настройка фона")
         self.setMinimumWidth(400)
 
         self.bg_type = None  # 'pdf', 'jpg', 'color'
         self.file_path = ""
-        self.current_rgb = (255, 255, 255) # White by default
+        self.current_rgb = (255, 255, 255) # Белый по умолчанию
 
         layout = QVBoxLayout(self)
 
-        # --- File Usage Section ---
-        file_group = QGroupBox(self.tr("Use image / PDF"))
+        # --- Секция использования файла ---
+        file_group = QGroupBox("Использовать изображение / PDF")
         file_layout = QVBoxLayout()
 
-        self.radio_file = QRadioButton(self.tr("Background from file"))
+        self.radio_file = QRadioButton("Фон из файла")
         self.radio_file.setChecked(True)
         file_layout.addWidget(self.radio_file)
 
         btn_layout = QHBoxLayout()
-        self.btn_pdf = QPushButton(self.tr("Insert PDF"))
-        self.btn_jpg = QPushButton(self.tr("Insert JPG"))
+        self.btn_pdf = QPushButton("Вставить PDF")
+        self.btn_jpg = QPushButton("Вставить JPG")
         self.btn_pdf.clicked.connect(self.load_pdf)
         self.btn_jpg.clicked.connect(self.load_jpg)
         btn_layout.addWidget(self.btn_pdf)
         btn_layout.addWidget(self.btn_jpg)
 
-        self.lbl_file = QLabel(self.tr("File not selected"))
+        self.lbl_file = QLabel("Файл не выбран")
         self.lbl_file.setWordWrap(True)
 
         file_layout.addLayout(btn_layout)
@@ -41,27 +41,27 @@ class BackgroundDialog(QDialog):
         file_group.setLayout(file_layout)
         layout.addWidget(file_group)
 
-        # --- Color Usage Section ---
-        color_group = QGroupBox(self.tr("Use color fill"))
+        # --- Секция использования цвета ---
+        color_group = QGroupBox("Использовать заливку цветом")
         color_layout = QVBoxLayout()
 
-        self.radio_color = QRadioButton(self.tr("Background color"))
+        self.radio_color = QRadioButton("Фон цветом")
         color_layout.addWidget(self.radio_color)
 
-        # Palette switcher
+        # Переключатель палитр
         palette_layout = QHBoxLayout()
-        self.radio_rgb = QRadioButton(self.tr("Palette RGB"))
-        self.radio_cmyk = QRadioButton(self.tr("Palette CMYK"))
+        self.radio_rgb = QRadioButton("Палитра RGB")
+        self.radio_cmyk = QRadioButton("Палитра CMYK")
         self.radio_rgb.setChecked(True)
         palette_layout.addWidget(self.radio_rgb)
         palette_layout.addWidget(self.radio_cmyk)
         color_layout.addLayout(palette_layout)
 
-        # Settings RGB (system palette)
+        # Настройки RGB (системная палитра)
         self.rgb_widget = QWidget()
         rgb_lyt = QHBoxLayout(self.rgb_widget)
         rgb_lyt.setContentsMargins(0, 0, 0, 0)
-        self.btn_choose_color = QPushButton(self.tr("Select color"))
+        self.btn_choose_color = QPushButton("Выбрать цвет")
         self.btn_choose_color.clicked.connect(self.choose_system_color)
         rgb_lyt.addWidget(self.btn_choose_color)
 
@@ -71,7 +71,7 @@ class BackgroundDialog(QDialog):
         rgb_lyt.addWidget(self.lbl_rgb_preview)
         color_layout.addWidget(self.rgb_widget)
 
-        # Settings CMYK (direct interest entry)
+        # Настройки CMYK (прямой ввод процентов)
         self.cmyk_widget = QWidget()
         cmyk_lyt = QHBoxLayout(self.cmyk_widget)
         cmyk_lyt.setContentsMargins(0, 0, 0, 0)
@@ -102,35 +102,30 @@ class BackgroundDialog(QDialog):
         color_group.setLayout(color_layout)
         layout.addWidget(color_group)
 
-        # Linking the switch
+        # Связываем переключение
         self.radio_rgb.toggled.connect(self.toggle_palettes)
         self.radio_cmyk.toggled.connect(self.toggle_palettes)
 
-        # Mutual exclusion of main radio buttons
+        # Взаимоисключение главных радиокнопок
         self.main_bg_group = QButtonGroup(self)
         self.main_bg_group.addButton(self.radio_file)
         self.main_bg_group.addButton(self.radio_color)
         self.radio_file.toggled.connect(self.update_ui_state)
         self.radio_color.toggled.connect(self.update_ui_state)
 
-        # --- Selecting pages to apply ---
+        # --- Выбор страниц для применения ---
         self.combo_range = QComboBox()
-        # Добавляем пары: (отображаемый текст с поддержкой перевода, скрытый неизменяемый ключ)
-        self.combo_range.addItem(self.tr("All Pages"), "all")
-        self.combo_range.addItem(self.tr("Current Page"), "current")
-        self.combo_range.addItem(self.tr("Even Pages"), "even")
-        self.combo_range.addItem(self.tr("Odd Pages"), "odd")
-        
-        layout.addWidget(QLabel(self.tr("Apply to:")))
+        self.combo_range.addItems(["Все страницы", "Текущая страница", "Четные страницы", "Нечетные страницы"])
+        layout.addWidget(QLabel("Применить к:"))
         layout.addWidget(self.combo_range)
 
-        # --- Application button ---
-        self.btn_apply = QPushButton(self.tr("APPLY"))
+        # --- Кнопка применения ---
+        self.btn_apply = QPushButton("ПРИМЕНИТЬ")
         self.btn_apply.setStyleSheet("background-color: #28a745; color: white; font-weight: bold; padding: 10px;")
         self.btn_apply.clicked.connect(self.accept)
         layout.addWidget(self.btn_apply)
 
-        # Initialize the interface
+        # Инициализация интерфейса
         self.update_ui_state()
 
     def toggle_palettes(self):
@@ -156,7 +151,7 @@ class BackgroundDialog(QDialog):
         self.spin_k.setEnabled(is_color)
 
     def load_pdf(self):
-        path, _ = QFileDialog.getOpenFileName(self, self.tr("Select PDF"), "", "PDF Files (*.pdf)")
+        path, _ = QFileDialog.getOpenFileName(self, "Выберите PDF", "", "PDF Files (*.pdf)")
         if path:
             self.file_path = path
             self.bg_type = 'pdf'
@@ -164,7 +159,7 @@ class BackgroundDialog(QDialog):
             self.radio_file.setChecked(True)
 
     def load_jpg(self):
-        path, _ = QFileDialog.getOpenFileName(self, self.tr("Select JPG"), "", "JPEG Files (*.jpg *.jpeg)")
+        path, _ = QFileDialog.getOpenFileName(self, "Выберите JPG", "", "JPEG Files (*.jpg *.jpeg)")
         if path:
             self.file_path = path
             self.bg_type = 'jpg'
@@ -172,15 +167,15 @@ class BackgroundDialog(QDialog):
             self.radio_file.setChecked(True)
 
     def choose_system_color(self):
-        color = QColorDialog.getColor(QColor(*self.current_rgb), self, self.tr("Select background color"))
+        color = QColorDialog.getColor(QColor(*self.current_rgb), self, "Выберите цвет фона")
         if color.isValid():
             self.current_rgb = (color.red(), color.green(), color.blue())
             self.lbl_rgb_preview.setStyleSheet(f"background-color: rgb({color.red()}, {color.green()}, {color.blue()}); border: 1px solid black;")
 
     def get_settings(self):
-        """Generates and returns settings for application"""
+        """Формирует и возвращает настройки для применения"""
         settings = {
-            'range': self.combo_range.currentData(),  # Возвращает 'all', 'current', 'even' или 'odd'
+            'range': self.combo_range.currentText(),
             'bg_type': None,
             'file_path': None,
             'color_value': None
@@ -188,17 +183,17 @@ class BackgroundDialog(QDialog):
 
         if self.radio_file.isChecked():
             if not self.file_path:
-                QMessageBox.warning(self, self.tr("Attention"), self.tr("Please select an image file or PDF."))
+                QMessageBox.warning(self, "Внимание", "Пожалуйста, выберите файл изображения или PDF.")
                 return None
             settings['bg_type'] = self.bg_type
             settings['file_path'] = self.file_path
         else:
             settings['bg_type'] = 'color'
             if self.radio_rgb.isChecked():
-                # PyMuPDF expects color components from 0.0 to 1.0 (for 3 values this is automatic RGB)
+                # PyMuPDF ожидает компоненты цвета от 0.0 до 1.0 (для 3 значений это автоматически RGB)
                 settings['color_value'] = (self.current_rgb[0]/255.0, self.current_rgb[1]/255.0, self.current_rgb[2]/255.0)
             else:
-                # 4 color components are automatically interpreted PyMuPDF How CMYK
+                # 4 компоненты цвета автоматически трактуются PyMuPDF как CMYK
                 settings['color_value'] = (self.spin_c.value()/100.0, self.spin_m.value()/100.0, self.spin_y.value()/100.0, self.spin_k.value()/100.0)
 
         return settings

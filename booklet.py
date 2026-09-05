@@ -5,21 +5,21 @@ from PyQt6.QtCore import Qt
 class BookletDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Booklet Settings")
+        self.setWindowTitle("Настройки буклета")
         self.setFixedWidth(350)
         
         layout = QVBoxLayout(self)
         
-        # Heading
-        title = QLabel("Booklet Settings")
+        # Заголовок
+        title = QLabel("Настройки буклета")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title.setStyleSheet("font-weight: bold; font-size: 14px; margin-bottom: 10px;")
         layout.addWidget(title)
         
-        # Type group
+        # Группа типов
         self.group_type = QButtonGroup(self)
-        self.rad_one = QRadioButton("One notebook (whole file)")
-        self.rad_many = QRadioButton("Several notebooks")
+        self.rad_one = QRadioButton("Одна тетрадь (весь файл)")
+        self.rad_many = QRadioButton("Несколько тетрадей")
         self.rad_one.setChecked(True)
         self.group_type.addButton(self.rad_one)
         self.group_type.addButton(self.rad_many)
@@ -27,30 +27,30 @@ class BookletDialog(QDialog):
         layout.addWidget(self.rad_one)
         layout.addWidget(self.rad_many)
         
-        # Selecting pages in a notebook
+        # Выбор страниц в тетради
         form = QFormLayout()
         self.combo_pages = QComboBox()
-        # Standard notebook sizes (multiples 4)
+        # Стандартные размеры тетрадей (кратные 4)
         pages = ["4", "8", "16", "24", "32", "40", "48", "64"]
         self.combo_pages.addItems(pages)
-        form.addRow("Pages in one notebook:", self.combo_pages)
+        form.addRow("Страниц в одной тетради:", self.combo_pages)
         
-        # Offsets
+        # Смещения
         self.spin_inner = QDoubleSpinBox()
         self.spin_inner.setRange(0, 50)
-        self.spin_inner.setSuffix(" mm")
+        self.spin_inner.setSuffix(" мм")
         
         self.spin_outer = QDoubleSpinBox()
         self.spin_outer.setRange(0, 50)
-        self.spin_outer.setSuffix(" mm")
+        self.spin_outer.setSuffix(" мм")
         
-        form.addRow("Offset inward:", self.spin_inner)
-        form.addRow("Outward offset:", self.spin_outer)
+        form.addRow("Смещение внутрь:", self.spin_inner)
+        form.addRow("Смещение наружу:", self.spin_outer)
         
         layout.addLayout(form)
         
-        # Button
-        self.btn_apply = QPushButton("APPLY")
+        # Кнопка
+        self.btn_apply = QPushButton("ПРИМЕНИТЬ")
         self.btn_apply.setStyleSheet("background-color: #0078d7; color: white; font-weight: bold; padding: 5px;")
         self.btn_apply.clicked.connect(self.accept)
         layout.addWidget(self.btn_apply)

@@ -1,13 +1,9 @@
 from PyQt6.QtWidgets import QDialog, QVBoxLayout, QLabel, QDoubleSpinBox, QComboBox, QPushButton, QFormLayout
-from PyQt6.QtCore import pyqtSignal
 
 class ScalePageDialog(QDialog):
-    # Сигнал для передачи параметров при немодальном или асинхронном вызове
-    settings_applied = pyqtSignal(dict)
-
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Changing the scale")
+        self.setWindowTitle("Изменение масштаба")
         self.resize(300, 250)
         
         layout = QVBoxLayout(self)
@@ -28,27 +24,20 @@ class ScalePageDialog(QDialog):
         self.spin_v.setValue(100)
         self.spin_v.setSuffix("%")
         
-        form.addRow("Scale (general):", self.spin_gen)
-        form.addRow("Horizontal scale:", self.spin_h)
-        form.addRow("Vertical scale:", self.spin_v)
+        form.addRow("Масштаб (общий):", self.spin_gen)
+        form.addRow("Масштаб по горизонтали:", self.spin_h)
+        form.addRow("Масштаб по вертикали:", self.spin_v)
         
         layout.addLayout(form)
         
         self.combo_mode = QComboBox()
-        self.combo_mode.addItems(["All Pages", "Current Page", "Even Pages", "Odd Pages"])
-        layout.addWidget(QLabel("Apply to:"))
+        self.combo_mode.addItems(["Все страницы", "Текущая страница", "Четные страницы", "Нечетные страницы"])
+        layout.addWidget(QLabel("Применить к:"))
         layout.addWidget(self.combo_mode)
         
-        self.btn_apply = QPushButton("APPLY")
-        self.btn_apply.setStyleSheet("background-color: #ffc107; color: black; font-weight: bold;")
-        self.btn_apply.clicked.connect(self._on_apply)
+        self.btn_apply = QPushButton("ПРИМЕНИТЬ")
+        self.btn_apply.clicked.connect(self.accept)
         layout.addWidget(self.btn_apply)
-
-    def _on_apply(self):
-        """Отправляет сигнал с настройками и закрывает диалог со статусом Accepted."""
-        settings = self.get_settings()
-        self.settings_applied.emit(settings)
-        self.accept()
         
     def get_settings(self):
         return {
@@ -57,10 +46,3 @@ class ScalePageDialog(QDialog):
             "vert": self.spin_v.value(),
             "mode": self.combo_mode.currentText()
         }
-
-    # Методы совместимости для разных вариантов вызова из main.py
-    def get_scale_settings(self):
-        return self.get_settings()
-
-    def get_values(self):
-        return self.get_settings()

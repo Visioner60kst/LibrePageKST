@@ -7,7 +7,7 @@ from PyQt6.QtGui import QDoubleValidator, QIntValidator
 class MultiplyDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("DUPLICATE PAGES")
+        self.setWindowTitle("РАЗМНОЖИТЬ СТРАНИЦЫ")
         self.resize(380, 470)
 
         self.standard_sizes = {
@@ -19,13 +19,13 @@ class MultiplyDialog(QDialog):
             "A5": (148, 210),
             "A6": (105, 148),
             "A7": (74, 105),
-            "Custom": (0, 0)
+            "Пользовательский": (0, 0)
         }
 
         layout = QVBoxLayout(self)
 
         size_layout = QHBoxLayout()
-        size_layout.addWidget(QLabel("Sheet size:"))
+        size_layout.addWidget(QLabel("Размер листа:"))
         self.size_combo = QComboBox()
         self.size_combo.addItems(list(self.standard_sizes.keys()))
         self.size_combo.setCurrentText("A3")
@@ -44,8 +44,8 @@ class MultiplyDialog(QDialog):
         layout.addLayout(self.custom_size_layout)
 
         orient_layout = QHBoxLayout()
-        self.radio_portrait = QRadioButton("Book")
-        self.radio_landscape = QRadioButton("Landscape")
+        self.radio_portrait = QRadioButton("Книжный")
+        self.radio_landscape = QRadioButton("Альбомный")
         self.radio_landscape.setChecked(True)
         self.orient_group = QButtonGroup()
         self.orient_group.addButton(self.radio_portrait)
@@ -55,43 +55,43 @@ class MultiplyDialog(QDialog):
         layout.addLayout(orient_layout)
 
         grid_layout = QGridLayout()
-        grid_layout.addWidget(QLabel("Copies per line:"), 0, 0)
+        grid_layout.addWidget(QLabel("Копий в строку:"), 0, 0)
         self.cols_input = QLineEdit("2")
         self.cols_input.setValidator(QIntValidator(1, 100))
         grid_layout.addWidget(self.cols_input, 0, 1)
 
-        grid_layout.addWidget(QLabel("Copies per column:"), 1, 0)
+        grid_layout.addWidget(QLabel("Копий в столбец:"), 1, 0)
         self.rows_input = QLineEdit("2")
         self.rows_input.setValidator(QIntValidator(1, 100))
         grid_layout.addWidget(self.rows_input, 1, 1)
 
-        grid_layout.addWidget(QLabel("Distance between pages. (mm):"), 2, 0)
+        grid_layout.addWidget(QLabel("Расстояние между стр. (мм):"), 2, 0)
         self.spacing_input = QLineEdit("0")
         self.spacing_input.setValidator(QDoubleValidator(0.0, 500.0, 2))
         grid_layout.addWidget(self.spacing_input, 2, 1)
 
         layout.addLayout(grid_layout)
 
-        self.check_crop_marks = QCheckBox("Place cutting marks (3 mm)")
+        self.check_crop_marks = QCheckBox("Поставить метки реза (3 мм)")
         layout.addWidget(self.check_crop_marks)
 
         marks_layout = QGridLayout()
-        marks_layout.addWidget(QLabel("Above (mm):"), 0, 0)
+        marks_layout.addWidget(QLabel("Сверху (мм):"), 0, 0)
         self.crop_top_input = QLineEdit("3")
         self.crop_top_input.setValidator(QDoubleValidator(0.0, 100.0, 2))
         marks_layout.addWidget(self.crop_top_input, 0, 1)
 
-        marks_layout.addWidget(QLabel("From below (mm):"), 1, 0)
+        marks_layout.addWidget(QLabel("Снизу (мм):"), 1, 0)
         self.crop_bottom_input = QLineEdit("3")
         self.crop_bottom_input.setValidator(QDoubleValidator(0.0, 100.0, 2))
         marks_layout.addWidget(self.crop_bottom_input, 1, 1)
 
-        marks_layout.addWidget(QLabel("Left (mm):"), 2, 0)
+        marks_layout.addWidget(QLabel("Слева (мм):"), 2, 0)
         self.crop_left_input = QLineEdit("3")
         self.crop_left_input.setValidator(QDoubleValidator(0.0, 100.0, 2))
         marks_layout.addWidget(self.crop_left_input, 2, 1)
 
-        marks_layout.addWidget(QLabel("Right (mm):"), 3, 0)
+        marks_layout.addWidget(QLabel("Справа (мм):"), 3, 0)
         self.crop_right_input = QLineEdit("3")
         self.crop_right_input.setValidator(QDoubleValidator(0.0, 100.0, 2))
         marks_layout.addWidget(self.crop_right_input, 3, 1)
@@ -99,7 +99,7 @@ class MultiplyDialog(QDialog):
         layout.addLayout(marks_layout)
 
         btn_layout = QHBoxLayout()
-        self.btn_apply = QPushButton("APPLY")
+        self.btn_apply = QPushButton("ПРИМЕНИТЬ")
         self.btn_apply.clicked.connect(self.accept)
         btn_layout.addStretch()
         btn_layout.addWidget(self.btn_apply)
@@ -108,7 +108,7 @@ class MultiplyDialog(QDialog):
         self.on_size_changed()
 
     def on_size_changed(self):
-        is_custom = self.size_combo.currentText() == "Custom"
+        is_custom = self.size_combo.currentText() == "Пользовательский"
         self.custom_w_input.setEnabled(is_custom)
         self.custom_h_input.setEnabled(is_custom)
 

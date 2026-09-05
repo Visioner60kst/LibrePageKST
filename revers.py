@@ -4,15 +4,15 @@ from PyQt6.QtWidgets import QMessageBox
 
 def reverse_pages_action(main_window):
     """
-    Reverse page order PDF.
-    Creates a new document and copies the pages in reverse order.
+    Реверс порядка страниц PDF.
+    Создает новый документ и копирует страницы в обратном порядке.
     """
 
     if not main_window.doc:
         QMessageBox.warning(
             main_window,
-            "Attention",
-            "First open PDF file."
+            "Внимание",
+            "Сначала откройте PDF файл."
         )
         return
 
@@ -21,15 +21,15 @@ def reverse_pages_action(main_window):
     if total_pages <= 1:
         QMessageBox.information(
             main_window,
-            "Information",
-            "There is only one page in the document."
+            "Информация",
+            "В документе только одна страница."
         )
         return
 
     reply = QMessageBox.question(
         main_window,
-        "Reverse pages",
-        f"Change order {total_pages} pages to return?",
+        "Реверс страниц",
+        f"Изменить порядок {total_pages} страниц на обратный?",
         QMessageBox.StandardButton.Yes |
         QMessageBox.StandardButton.No,
         QMessageBox.StandardButton.No
@@ -62,13 +62,13 @@ def reverse_pages_action(main_window):
 
         QMessageBox.information(
             main_window,
-            "Done",
-            "Page reverse completed."
+            "Готово",
+            "Реверс страниц выполнен."
         )
 
     except Exception as e:
         QMessageBox.critical(
             main_window,
-            "Error",
-            f"Failed to reverse pages:\n{e}"
+            "Ошибка",
+            f"Не удалось выполнить реверс страниц:\n{e}"
         )
